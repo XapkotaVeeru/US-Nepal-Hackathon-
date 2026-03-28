@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -252,7 +251,7 @@ class MentalHealthSupportApp extends StatelessWidget {
       ),
       bodyMedium: TextStyle(
         fontSize: 14,
-        color: baseColor.withOpacity(0.75),
+        color: baseColor.withValues(alpha: 0.75),
         height: 1.5,
       ),
       labelLarge: TextStyle(
@@ -264,7 +263,7 @@ class MentalHealthSupportApp extends StatelessWidget {
       labelSmall: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w500,
-        color: baseColor.withOpacity(0.6),
+        color: baseColor.withValues(alpha: 0.6),
         letterSpacing: 0.5,
       ),
     );
@@ -376,23 +375,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       // ── Custom Bottom Navigation ─────────────
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: Container(
-            height: 68,
+            height: 72,
             decoration: BoxDecoration(
               color: isDark ? AppColors.darkCard : Colors.white,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: isDark
                     ? AppColors.darkBorder
-                    : AppColors.creamDark.withOpacity(0.8),
+                    : AppColors.creamDark.withValues(alpha: 0.8),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isDark
-                      ? Colors.black.withOpacity(0.4)
-                      : AppColors.sage.withOpacity(0.12),
+                      ? Colors.black.withValues(alpha: 0.4)
+                      : AppColors.sage.withValues(alpha: 0.12),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -576,40 +575,40 @@ class _NavButton extends StatelessWidget {
         builder: (context, child) {
           return Padding(
             padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOutCubic,
-                  width: isSelected ? 52 : 40,
-                  height: 34,
+                  width: isSelected ? 48 : 36,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? colorScheme.primary.withOpacity(0.12)
+                        ? colorScheme.primary.withValues(alpha: 0.12)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     isSelected ? item.activeIcon : item.icon,
-                    size: 22,
+                    size: 20,
                     color: isSelected
                         ? colorScheme.primary
-                        : colorScheme.onSurface.withOpacity(0.45),
+                        : colorScheme.onSurface.withValues(alpha: 0.45),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   item.label,
                   style: TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 10,
                     fontWeight: isSelected
                         ? FontWeight.w600
                         : FontWeight.w400,
                     color: isSelected
                         ? colorScheme.primary
-                        : colorScheme.onSurface.withOpacity(0.4),
+                        : colorScheme.onSurface.withValues(alpha: 0.4),
                     letterSpacing: isSelected ? 0.3 : 0,
                   ),
                 ),
@@ -899,7 +898,7 @@ class _DrawerHeader extends StatelessWidget {
                 child: CircleAvatar(
                   radius: 28,
                   backgroundColor:
-                      AppColors.sageLight.withOpacity(0.2),
+                      AppColors.sageLight.withValues(alpha: 0.2),
                   child: const Icon(
                     Icons.spa_outlined,
                     color: AppColors.sage,
@@ -948,7 +947,7 @@ class _DrawerHeader extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: AppColors.sage.withOpacity(0.12),
+              color: AppColors.sage.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Text(
@@ -1020,12 +1019,12 @@ class _DrawerItem extends StatelessWidget {
     if (isDestructive) {
       iconColor = const Color(0xFFD45C5C);
       textColor = const Color(0xFFD45C5C);
-      bgColor = const Color(0xFFD45C5C).withOpacity(0.1);
+      bgColor = const Color(0xFFD45C5C).withValues(alpha: 0.1);
     } else if (isEmergency) {
       iconColor = const Color(0xFFE8A838);
       textColor =
           isDark ? const Color(0xFFFFD580) : const Color(0xFF7A4A00);
-      bgColor = const Color(0xFFE8A838).withOpacity(0.12);
+      bgColor = const Color(0xFFE8A838).withValues(alpha: 0.12);
     } else {
       iconColor = AppColors.sage;
       textColor =
