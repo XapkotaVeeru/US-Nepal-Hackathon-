@@ -32,6 +32,18 @@ class ProfileScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
                     children: [
+                      // Settings button row
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: IconButton(
+                          onPressed: () => _showSettingsDialog(context),
+                          icon: Icon(
+                            Icons.settings_outlined,
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                          tooltip: 'Settings',
+                        ),
+                      ),
                       CircleAvatar(
                         radius: 40,
                         backgroundColor:

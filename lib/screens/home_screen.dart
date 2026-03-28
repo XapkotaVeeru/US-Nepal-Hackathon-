@@ -239,13 +239,36 @@ class HomeScreen extends StatelessWidget {
         'icon': Icons.chat_bubble_outline,
         'label': 'Talk to\nSomeone',
         'color': colorScheme.primary,
-        'onTap': () {},
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatDetailScreen(
+                chat: ChatItem(
+                  id: 'new',
+                  name: 'New Conversation',
+                  lastMessage: '',
+                  timestamp: 'now',
+                  unreadCount: 0,
+                  isGroup: false,
+                ),
+              ),
+            ),
+          );
+        },
       },
       {
         'icon': Icons.explore_outlined,
         'label': 'Join a\nGroup',
         'color': colorScheme.tertiary,
-        'onTap': () {},
+        'onTap': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Switch to the Discover tab to find groups! 🔍'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
       },
       {
         'icon': Icons.mood_outlined,
@@ -380,7 +403,15 @@ class HomeScreen extends StatelessWidget {
             ),
             const Spacer(),
             TextButton(
-              onPressed: () {},
+              onPressed: () {
+                // Navigate to the Chats tab – for now show a snackbar
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Switch to the Chats tab to see all conversations 💬'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
               child: const Text('See all'),
             ),
           ],
