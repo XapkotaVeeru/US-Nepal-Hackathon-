@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/chats_screen.dart';
+import 'screens/discover_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/insights_screen.dart';
@@ -17,6 +17,8 @@ import 'providers/app_state_provider.dart';
 import 'providers/post_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/community_provider.dart';
+import 'widgets/help_me_now_button.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +63,9 @@ class MentalHealthSupportApp extends StatelessWidget {
           create: (_) =>
               NotificationProvider(apiService)..loadMockNotifications(),
         ),
+        ChangeNotifierProvider(
+          create: (_) => CommunityProvider(),
+        ),
       ],
       child: MaterialApp(
         title: 'Mental Health Support',
@@ -98,16 +103,25 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
+    DiscoverScreen(),
     ChatsScreen(),
     NotificationsScreen(),
     ProfileScreen(),
+  ];
+
+  final List<String> _titles = const [
+    'Home',
+    'Discover',
+    'Chats',
+    'Notifications',
+    'Profile',
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mental Health Support'),
+        title: Text(_titles[_currentIndex]),
         leading: Builder(
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu),
@@ -117,6 +131,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       drawer: const AppDrawer(),
       body: IndexedStack(index: _currentIndex, children: _screens),
+      floatingActionButton: const HelpMeNowButton(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
@@ -131,6 +146,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             label: 'Home',
           ),
           NavigationDestination(
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore),
+            label: 'Discover',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline),
             selectedIcon: Icon(Icons.chat_bubble),
             label: 'Chats',
@@ -138,7 +158,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           NavigationDestination(
             icon: Icon(Icons.notifications_outlined),
             selectedIcon: Icon(Icons.notifications),
-            label: 'Notifications',
+            label: 'Alerts',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
