@@ -34,27 +34,14 @@ class ChatsScreen extends StatelessWidget {
       ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chats'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              // Search chats
+    return chats.isEmpty
+        ? _buildEmptyState(context)
+        : ListView.builder(
+            itemCount: chats.length,
+            itemBuilder: (context, index) {
+              return _buildChatTile(context, chats[index]);
             },
-          ),
-        ],
-      ),
-      body: chats.isEmpty
-          ? _buildEmptyState(context)
-          : ListView.builder(
-              itemCount: chats.length,
-              itemBuilder: (context, index) {
-                return _buildChatTile(context, chats[index]);
-              },
-            ),
-    );
+          );
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -102,9 +89,8 @@ class ChatsScreen extends StatelessWidget {
             child: Text(
               chat.name,
               style: TextStyle(
-                fontWeight: chat.unreadCount > 0
-                    ? FontWeight.bold
-                    : FontWeight.normal,
+                fontWeight:
+                    chat.unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ),
@@ -130,9 +116,8 @@ class ChatsScreen extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: chat.unreadCount > 0
-              ? FontWeight.w500
-              : FontWeight.normal,
+          fontWeight:
+              chat.unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
         ),
       ),
       trailing: Column(
@@ -244,8 +229,8 @@ class ChatDetailScreen extends StatelessWidget {
                   child: Text(
                     'Remember: This is peer support, not professional therapy',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                   ),
                 ),
               ],
@@ -285,15 +270,14 @@ class ChatDetailScreen extends StatelessWidget {
                       ),
                     ),
                     maxLength: 1000,
-                    buildCounter:
-                        (
-                          context, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) {
-                          return null; // Hide counter
-                        },
+                    buildCounter: (
+                      context, {
+                      required currentLength,
+                      required isFocused,
+                      maxLength,
+                    }) {
+                      return null; // Hide counter
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),

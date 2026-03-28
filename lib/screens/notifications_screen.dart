@@ -7,45 +7,27 @@ class NotificationsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-        actions: [
-          Consumer<NotificationProvider>(
-            builder: (context, provider, child) {
-              return IconButton(
-                icon: const Icon(Icons.done_all),
-                onPressed: provider.notifications.isEmpty
-                    ? null
-                    : () => provider.markAllAsRead(),
-                tooltip: 'Mark all as read',
-              );
-            },
-          ),
-        ],
-      ),
-      body: Consumer<NotificationProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Consumer<NotificationProvider>(
+      builder: (context, provider, child) {
+        if (provider.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-          if (provider.notifications.isEmpty) {
-            return _buildEmptyState(context);
-          }
+        if (provider.notifications.isEmpty) {
+          return _buildEmptyState(context);
+        }
 
-          return ListView.builder(
-            itemCount: provider.notifications.length,
-            itemBuilder: (context, index) {
-              return _buildNotificationTile(
-                context,
-                provider.notifications[index],
-                provider,
-              );
-            },
-          );
-        },
-      ),
+        return ListView.builder(
+          itemCount: provider.notifications.length,
+          itemBuilder: (context, index) {
+            return _buildNotificationTile(
+              context,
+              provider.notifications[index],
+              provider,
+            );
+          },
+        );
+      },
     );
   }
 

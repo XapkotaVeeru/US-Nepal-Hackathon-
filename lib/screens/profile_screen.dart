@@ -10,131 +10,116 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => _showSettingsDialog(context),
+    return Consumer2<AppStateProvider, PostProvider>(
+      builder: (context, appState, postProvider, child) {
+        if (appState.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final user = appState.currentUser;
+        if (user == null) {
+          return const Center(child: Text('No user data'));
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Profile card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundColor:
+                            Theme.of(context).colorScheme.primaryContainer,
+                        child: Icon(
+                          Icons.person,
+                          size: 40,
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        user.displayName,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'ID: ${user.anonymousId.substring(0, 12)}...',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () =>
+                            _showSaveProfileDialog(context, user.anonymousId),
+                        icon: const Icon(Icons.save),
+                        label: const Text('Save Profile'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Stats card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your Activity',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildStatItem(
+                            context,
+                            postProvider.postHistory.length.toString(),
+                            'Posts',
+                            Icons.post_add,
+                          ),
+                          _buildStatItem(
+                            context,
+                            user.totalChats.toString(),
+                            'Chats',
+                            Icons.chat_bubble,
+                          ),
+                          _buildStatItem(
+                            context,
+                            '0',
+                            'Groups',
+                            Icons.group,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // My posts section
+              Text('My Posts', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              _buildMyPostsList(context, postProvider.postHistory),
+            ],
           ),
-        ],
-      ),
-      body: Consumer2<AppStateProvider, PostProvider>(
-        builder: (context, appState, postProvider, child) {
-          if (appState.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final user = appState.currentUser;
-          if (user == null) {
-            return const Center(child: Text('No user data'));
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Profile card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primaryContainer,
-                          child: Icon(
-                            Icons.person,
-                            size: 40,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onPrimaryContainer,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          user.displayName,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'ID: ${user.anonymousId.substring(0, 12)}...',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: () =>
-                              _showSaveProfileDialog(context, user.anonymousId),
-                          icon: const Icon(Icons.save),
-                          label: const Text('Save Profile'),
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Stats card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your Activity',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildStatItem(
-                              context,
-                              postProvider.postHistory.length.toString(),
-                              'Posts',
-                              Icons.post_add,
-                            ),
-                            _buildStatItem(
-                              context,
-                              user.totalChats.toString(),
-                              'Chats',
-                              Icons.chat_bubble,
-                            ),
-                            _buildStatItem(
-                              context,
-                              '0',
-                              'Groups',
-                              Icons.group,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // My posts section
-                Text('My Posts', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                _buildMyPostsList(context, postProvider.postHistory),
-              ],
-            ),
-          );
-        },
-      ),
+        );
+      },
     );
   }
 
