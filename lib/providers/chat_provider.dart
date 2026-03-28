@@ -9,7 +9,7 @@ class ChatProvider with ChangeNotifier {
   WebSocketService? _wsService;
 
   List<ChatSession> _sessions = [];
-  Map<String, List<Message>> _messagesBySession = {};
+  final Map<String, List<Message>> _messagesBySession = {};
   bool _isLoading = false;
   String? _error;
   ConnectionState _connectionState = ConnectionState.disconnected;
@@ -51,7 +51,7 @@ class ChatProvider with ChangeNotifier {
       _sessions = await _apiService.getUserSessions(anonymousId);
     } catch (e) {
       _error = e.toString();
-      print('Error loading sessions: $e');
+      debugPrint('Error loading sessions: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -70,7 +70,7 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _error = e.toString();
-      print('Error loading messages: $e');
+      debugPrint('Error loading messages: $e');
       notifyListeners();
     }
   }
@@ -84,7 +84,7 @@ class ChatProvider with ChangeNotifier {
       _wsService?.sendMessage(sessionId: sessionId, content: content);
     } catch (e) {
       _error = e.toString();
-      print('Error sending message: $e');
+      debugPrint('Error sending message: $e');
       notifyListeners();
     }
   }
@@ -138,7 +138,7 @@ class ChatProvider with ChangeNotifier {
       );
     } catch (e) {
       _error = e.toString();
-      print('Error sending chat request: $e');
+      debugPrint('Error sending chat request: $e');
       notifyListeners();
       rethrow;
     }

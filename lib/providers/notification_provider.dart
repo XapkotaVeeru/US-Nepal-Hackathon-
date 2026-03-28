@@ -99,7 +99,7 @@ class NotificationProvider with ChangeNotifier {
           .removeWhere((n) => n.actionData?['requestId'] == requestId);
     } catch (e) {
       _error = e.toString();
-      print('Error accepting chat request: $e');
+      debugPrint('Error accepting chat request: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -120,7 +120,7 @@ class NotificationProvider with ChangeNotifier {
           .removeWhere((n) => n.actionData?['requestId'] == requestId);
     } catch (e) {
       _error = e.toString();
-      print('Error declining chat request: $e');
+      debugPrint('Error declining chat request: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
