@@ -59,17 +59,18 @@ class HomeScreen extends StatelessWidget {
               if (postProvider.error != null) const SizedBox(height: 16),
 
               // Create post or show results
-              if (postProvider.matchResults == null)
-                CreatePostCard(
-                  anonymousId: appState.anonymousId ?? '',
-                  isSubmitting: postProvider.isSubmitting,
-                )
-              else if (postProvider.isSubmitting)
+              if (postProvider.isSubmitting)
                 _buildLoadingCard(context)
-              else
+              else if (postProvider.matchResults != null &&
+                  postProvider.currentPost != null)
                 MatchResultsCard(
                   post: postProvider.currentPost!,
                   onCreateNewPost: () => postProvider.clearMatchResults(),
+                )
+              else
+                CreatePostCard(
+                  anonymousId: appState.anonymousId ?? '',
+                  isSubmitting: postProvider.isSubmitting,
                 ),
 
               const SizedBox(height: 80),

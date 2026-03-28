@@ -20,11 +20,14 @@ class ChatProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   ConnectionState get connectionState => _connectionState;
+  WebSocketService? get wsService => _wsService;
   int get totalUnreadCount =>
       _sessions.fold(0, (sum, s) => sum + s.unreadCount);
 
-  /// Initialize WebSocket
+  /// Initialize WebSocket with AWS endpoint
   void initializeWebSocket(String wsUrl, String anonymousId) {
+    _wsService?.dispose();
+
     _wsService = WebSocketService(wsUrl: wsUrl, anonymousId: anonymousId);
 
     // Listen to connection state
@@ -58,14 +61,14 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Load messages for a session
-  Future<void> loadMessages(String sessionId) async {
+  /// Load messages for a community
+  Future<void> loadCommunityMessages(String communityId) async {
     try {
-      final messages = await _apiService.getSessionMessages(sessionId);
-      _messagesBySession[sessionId] = messages;
+      final messages = await _apiService.getCommunityMessages(communityId);
+      _messagesBySession[communityId] = messages;
 
-      // Join WebSocket room
-      _wsService?.joinSession(sessionId);
+      // Join WebSocket room for real-time updates
+      _wsService?.joinCommunity(communityId);
 
       notifyListeners();
     } catch (e) {
@@ -75,13 +78,30 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Send a message
-  void sendMessage({
-    required String sessionId,
+  /// Load messages for a session (legacy)
+  Future<void> loadMessages(String sessionId) async {
+    try {
+      final messages = await _apiService.getSessionMessages(sessionId);
+      _messagesBySession[sessionId] = messages;
+
+      // Join WebSocket room
+      _wsService?.joinCommunity(sessionId);
+
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      debugPrint('Error loading messages: $e');
+      notifyListeners();
+    }
+  }
+
+  /// Send a message to a community
+  void sendCommunityMessage({
+    required String communityId,
     required String content,
   }) {
     try {
-      _wsService?.sendMessage(sessionId: sessionId, content: content);
+      _wsService?.sendMessage(communityId: communityId, content: content);
     } catch (e) {
       _error = e.toString();
       debugPrint('Error sending message: $e');
@@ -89,17 +109,26 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
+  /// Send a message (legacy session-based)
+  void sendMessage({
+    required String sessionId,
+    required String content,
+  }) {
+    sendCommunityMessage(communityId: sessionId, content: content);
+  }
+
   /// Handle incoming WebSocket message
   void _handleIncomingMessage(Message message) {
-    // Add to message list
-    if (_messagesBySession.containsKey(message.sessionId)) {
-      _messagesBySession[message.sessionId]!.add(message);
+    // Add to message list by community/session
+    final key = message.sessionId;
+    if (_messagesBySession.containsKey(key)) {
+      _messagesBySession[key]!.add(message);
     } else {
-      _messagesBySession[message.sessionId] = [message];
+      _messagesBySession[key] = [message];
     }
 
-    // Update session last message
-    final sessionIndex = _sessions.indexWhere((s) => s.id == message.sessionId);
+    // Update session last message if applicable
+    final sessionIndex = _sessions.indexWhere((s) => s.id == key);
     if (sessionIndex != -1) {
       _sessions[sessionIndex] = _sessions[sessionIndex].copyWith(
         lastMessage: message.content,
@@ -111,9 +140,9 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Get messages for a session
-  List<Message> getMessages(String sessionId) {
-    return _messagesBySession[sessionId] ?? [];
+  /// Get messages for a session/community
+  List<Message> getMessages(String id) {
+    return _messagesBySession[id] ?? [];
   }
 
   /// Mark session as read

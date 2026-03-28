@@ -16,6 +16,7 @@ import 'screens/about_screen.dart';
 
 import 'services/anonymous_id_service.dart';
 import 'services/api_service.dart';
+import 'config/aws_config.dart';
 
 import 'providers/app_state_provider.dart';
 import 'providers/post_provider.dart';
@@ -34,7 +35,7 @@ void main() async {
 
   final anonymousIdService = await AnonymousIdService.create();
 
-  const apiBaseUrl = 'https://your-api-gateway-url.amazonaws.com';
+  const apiBaseUrl = AwsConfig.httpApiBaseUrl;
   final apiService = ApiService(baseUrl: apiBaseUrl);
 
   runApp(MentalHealthSupportApp(
@@ -87,13 +88,29 @@ class MentalHealthSupportApp extends StatelessWidget {
           create: (_) => AppStateProvider(anonymousIdService)..initialize(),
         ),
         ChangeNotifierProvider(create: (_) => PostProvider(apiService)),
-        ChangeNotifierProvider(create: (_) => ChatProvider(apiService)),
+        ChangeNotifierProvider(
+          create: (ctx) {
+            final chatProvider = ChatProvider(apiService);
+            // Initialize WebSocket after a frame to let AppState load first
+            Future.microtask(() {
+              final appState = ctx.read<AppStateProvider>();
+              final userId = appState.anonymousId;
+              if (userId != null) {
+                chatProvider.initializeWebSocket(
+                  AwsConfig.websocketUrl,
+                  userId,
+                );
+              }
+            });
+            return chatProvider;
+          },
+        ),
         ChangeNotifierProvider(
           create: (_) =>
               NotificationProvider(apiService)..loadMockNotifications(),
         ),
         ChangeNotifierProvider(
-          create: (_) => CommunityProvider(),
+          create: (_) => CommunityProvider(apiService: apiService),
         ),
       ],
       child: MaterialApp(
