@@ -5,6 +5,12 @@ import 'screens/home_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/insights_screen.dart';
+import 'screens/mood_tracking_screen.dart';
+import 'screens/journaling_screen.dart';
+import 'screens/crisis_resources_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/about_screen.dart';
 import 'services/anonymous_id_service.dart';
 import 'services/api_service.dart';
 import 'providers/app_state_provider.dart';
@@ -158,9 +164,17 @@ class AppDrawer extends StatelessWidget {
           return ListView(
             padding: EdgeInsets.zero,
             children: [
+              // Drawer Header
               DrawerHeader(
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Theme.of(context).colorScheme.primary,
+                      Theme.of(context).colorScheme.primaryContainer,
+                    ],
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,7 +182,8 @@ class AppDrawer extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 32,
-                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
                       child: Icon(
                         Icons.favorite,
                         size: 32,
@@ -179,92 +194,142 @@ class AppDrawer extends StatelessWidget {
                     Text(
                       user?.displayName ?? 'Anonymous User',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onPrimaryContainer,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontWeight: FontWeight.bold,
                           ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       user != null
                           ? 'ID: ${user.anonymousId.substring(0, 12)}...'
-                          : '',
+                          : 'Your safe, anonymous space',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context)
                                 .colorScheme
-                                .onPrimaryContainer,
+                                .onPrimary
+                                .withValues(alpha: 0.8),
                           ),
                     ),
                   ],
                 ),
               ),
+
+              // 1. Insights
+              ListTile(
+                leading: const Icon(Icons.insights),
+                title: const Text('Insights'),
+                subtitle: const Text('Weekly mood trends & stats'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const InsightsScreen()),
+                  );
+                },
+              ),
+
+              // 2. Mood Tracking
+              ListTile(
+                leading: const Icon(Icons.mood),
+                title: const Text('Mood Tracking'),
+                subtitle: const Text('Log how you\'re feeling'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const MoodTrackingScreen()),
+                  );
+                },
+              ),
+
+              // 3. Journaling
+              ListTile(
+                leading: const Icon(Icons.book),
+                title: const Text('Journaling'),
+                subtitle: const Text('Write your thoughts'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const JournalingScreen()),
+                  );
+                },
+              ),
+
+              // 4. Crisis Resources
+              ListTile(
+                leading: Icon(
+                  Icons.emergency,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  'Crisis Resources',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: const Text('Helplines & emergency contacts'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CrisisResourcesScreen()),
+                  );
+                },
+              ),
+
+              const Divider(),
+
+              // 5. Settings
               ListTile(
                 leading: const Icon(Icons.settings),
                 title: const Text('Settings'),
                 onTap: () {
                   Navigator.pop(context);
-                  _showSettingsDialog(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SettingsScreen()),
+                  );
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.save),
-                title: const Text('Save Profile'),
-                subtitle: const Text('Export your anonymous ID'),
-                onTap: () {
-                  Navigator.pop(context);
-                  if (user != null) {
-                    _showSaveProfileDialog(context, user.anonymousId);
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.upload),
-                title: const Text('Import Profile'),
-                subtitle: const Text('Restore from another device'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showImportProfileDialog(context);
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.help_outline),
-                title: const Text('Help & Support'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showHelpDialog(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('Privacy Policy'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showPrivacyDialog(context);
-                },
-              ),
+
+              // 6. About App
               ListTile(
                 leading: const Icon(Icons.info_outline),
-                title: const Text('About'),
+                title: const Text('About App'),
                 onTap: () {
                   Navigator.pop(context);
-                  _showAboutDialog(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const AboutScreen()),
+                  );
                 },
               ),
+
               const Divider(),
+
+              // 7. Logout (Start Fresh)
               ListTile(
                 leading: Icon(
-                  Icons.refresh,
+                  Icons.logout,
                   color: Theme.of(context).colorScheme.error,
                 ),
                 title: Text(
-                  'Start Fresh',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  'Logout',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.error),
                 ),
-                subtitle: const Text('Get a new anonymous ID'),
+                subtitle: const Text('Start fresh with a new ID'),
                 onTap: () {
                   Navigator.pop(context);
-                  _showStartFreshConfirmation(context);
+                  _showLogoutConfirmation(context);
                 },
               ),
             ],
@@ -274,325 +339,15 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  void _showSettingsDialog(BuildContext context) {
+  void _showLogoutConfirmation(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Settings'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SwitchListTile(
-              title: const Text('Dark Mode'),
-              subtitle: const Text('Use dark theme'),
-              value: Theme.of(context).brightness == Brightness.dark,
-              onChanged: (value) {
-                // TODO: Implement theme switching
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Theme switching coming soon')),
-                );
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Notifications'),
-              subtitle: const Text('Receive match notifications'),
-              value: true,
-              onChanged: (value) {
-                // TODO: Implement notification settings
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSaveProfileDialog(BuildContext context, String anonymousId) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save Profile'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-                'Save your Anonymous ID to access your profile on other devices.'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Your Anonymous ID:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    anonymousId,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '⚠️ Keep this ID safe and private',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: anonymousId));
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ID copied to clipboard!')),
-              );
-            },
-            icon: const Icon(Icons.copy),
-            label: const Text('Copy'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showImportProfileDialog(BuildContext context) {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Import Profile'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter your Anonymous ID to restore your profile:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Anonymous ID',
-                border: OutlineInputBorder(),
-                hintText: 'Paste your ID here',
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'This will replace your current profile',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final id = controller.text.trim();
-              if (id.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter an ID')),
-                );
-                return;
-              }
-
-              // TODO: Implement profile import
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Profile import coming soon')),
-              );
-            },
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showHelpDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Help & Support'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'How to use this app:',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              const Text('1. Share your feelings on the Home tab'),
-              const SizedBox(height: 8),
-              const Text('2. We\'ll match you with similar people'),
-              const SizedBox(height: 8),
-              const Text('3. Accept chat requests in Notifications'),
-              const SizedBox(height: 8),
-              const Text('4. Chat anonymously in the Chats tab'),
-              const SizedBox(height: 16),
-              Text(
-                'Crisis Resources:',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              const Text('🆘 988 Suicide & Crisis Lifeline'),
-              const Text('📱 Text "HELLO" to 741741'),
-              const Text('🌐 NAMI Helpline: 1-800-950-6264'),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '⚠️ This is peer support, not professional therapy. If you\'re in crisis, please call emergency services.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPrivacyDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Privacy Policy'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your Privacy Matters',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              const Text('• All interactions are anonymous'),
-              const SizedBox(height: 8),
-              const Text('• We don\'t collect personal information'),
-              const SizedBox(height: 8),
-              const Text('• Your messages are encrypted'),
-              const SizedBox(height: 8),
-              const Text('• AI analyzes text for matching only'),
-              const SizedBox(height: 8),
-              const Text('• Data is stored securely on AWS'),
-              const SizedBox(height: 16),
-              Text(
-                'What We Collect:',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              const Text('• Anonymous ID (generated locally)'),
-              const SizedBox(height: 8),
-              const Text('• Your posts and messages'),
-              const SizedBox(height: 8),
-              const Text('• Chat session metadata'),
-              const SizedBox(height: 16),
-              Text(
-                'What We Don\'t Collect:',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              const Text('• Real name or email'),
-              const SizedBox(height: 8),
-              const Text('• Phone number'),
-              const SizedBox(height: 8),
-              const Text('• Location data'),
-              const SizedBox(height: 8),
-              const Text('• Device identifiers'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showAboutDialog(
-      context: context,
-      applicationName: 'Mental Health Support',
-      applicationVersion: '1.0.0',
-      applicationIcon:
-          const Icon(Icons.favorite, size: 48, color: Color(0xFF6B4CE6)),
-      children: [
-        const Text(
-          'A safe, anonymous platform for peer support and emotional wellness.',
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Built with Flutter and powered by AWS AI services.',
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          '💜 Remember: This is not a replacement for professional therapy. If you\'re in crisis, please contact emergency services.',
-        ),
-      ],
-    );
-  }
-
-  void _showStartFreshConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Start Fresh?'),
+        icon: Icon(Icons.logout,
+            size: 40, color: Theme.of(context).colorScheme.error),
+        title: const Text('Logout & Start Fresh?'),
         content: const Text(
-          'This will generate a new anonymous ID. You won\'t be able to access your current chats and data.\n\nThis action cannot be undone.',
+          'This will generate a new anonymous ID. You won\'t be able to access your current chats, posts, and journal entries.\n\nThis action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -606,17 +361,20 @@ class AppDrawer extends StatelessWidget {
               if (context.mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New anonymous ID generated!')),
+                  const SnackBar(
+                    content: Text('Logged out. New anonymous ID generated!'),
+                  ),
                 );
               }
             },
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: const Text('Start Fresh'),
+            child: const Text('Logout'),
           ),
         ],
       ),
     );
   }
 }
+
