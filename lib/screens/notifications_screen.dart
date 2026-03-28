@@ -14,229 +14,218 @@ class NotificationsScreen extends StatelessWidget {
         }
 
         if (provider.notifications.isEmpty) {
-          return _buildEmptyState(context);
+          return const _EmptyState();
         }
 
-        return ListView.builder(
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: provider.notifications.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
           itemBuilder: (context, index) {
-            return _buildNotificationTile(
-              context,
-              provider.notifications[index],
-              provider,
-            );
+            final notification = provider.notifications[index];
+            return NotificationTile(notification: notification);
           },
         );
       },
     );
   }
+}
 
-  Widget _buildEmptyState(BuildContext context) {
+/// ─────────────────────────────────────────────
+/// Empty State
+/// ─────────────────────────────────────────────
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.notifications_none,
               size: 80,
-              color: Theme.of(context).colorScheme.outline,
+              color: theme.colorScheme.outline,
             ),
             const SizedBox(height: 16),
             Text(
               'No notifications',
-              style: Theme.of(context).textTheme.titleLarge,
+              style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
-              'You\'ll see match requests and updates here',
-              style: Theme.of(context).textTheme.bodyMedium,
+              "You'll see updates, requests, and messages here",
               textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildNotificationTile(
-    BuildContext context,
-    NotificationItem notification,
-    NotificationProvider provider,
-  ) {
+/// ─────────────────────────────────────────────
+/// Notification Tile
+/// ─────────────────────────────────────────────
+class NotificationTile extends StatelessWidget {
+  final NotificationItem notification;
+
+  const NotificationTile({super.key, required this.notification});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.read<NotificationProvider>();
+    final theme = Theme.of(context);
+
+    final isUnread = !notification.isRead;
+
     return Dismissible(
-      key: Key(notification.id),
+      key: ValueKey(notification.id),
       direction: DismissDirection.endToStart,
-      background: Container(
-        color: Theme.of(context).colorScheme.error,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 16),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      onDismissed: (direction) {
+
+      confirmDismiss: (_) => _confirmDelete(context),
+
+      onDismissed: (_) {
         provider.deleteNotification(notification.id);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Notification deleted')));
-      },
-      child: Container(
-        color: notification.isRead
-            ? null
-            : Theme.of(context)
-                .colorScheme
-                .primaryContainer
-                .withValues(alpha: 0.3),
-        child: Column(
-          children: [
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor:
-                    _getNotificationColor(context, notification.type),
-                child: Icon(
-                  _getNotificationIcon(notification.type),
-                  color: Colors.white,
-                ),
-              ),
-              title: Text(
-                notification.title,
-                style: TextStyle(
-                  fontWeight:
-                      notification.isRead ? FontWeight.normal : FontWeight.bold,
-                ),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(notification.message),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTimestamp(notification.timestamp),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                  ),
-                ],
-              ),
-              isThreeLine: true,
-              onTap: () {
-                provider.markAsRead(notification.id);
-                _handleNotificationTap(context, notification);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Notification deleted'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () {
+                provider.addNotification(notification);
               },
             ),
-            if (notification.type == NotificationType.matchRequest ||
-                notification.type == NotificationType.groupInvite)
-              _buildActionButtons(context, notification, provider),
-          ],
+          ),
+        );
+      },
+
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        color: theme.colorScheme.error,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+
+      child: Card(
+        elevation: 0,
+        color: isUnread
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : null,
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: _getColor(context, notification.type),
+            child: Icon(
+              _getIcon(notification.type),
+              color: Colors.white,
+            ),
+          ),
+          title: Text(
+            notification.title,
+            style: TextStyle(
+              fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(notification.message),
+              const SizedBox(height: 4),
+              Text(
+                _formatTime(notification.timestamp),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+              ),
+            ],
+          ),
+          isThreeLine: true,
+          onTap: () {
+            provider.markAsRead(notification.id);
+            _handleTap(context, notification);
+          },
         ),
       ),
     );
   }
 
-  Widget _buildActionButtons(
-    BuildContext context,
-    NotificationItem notification,
-    NotificationProvider provider,
-  ) {
-    final requestId = notification.actionData?['requestId'] as String?;
-    if (requestId == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          OutlinedButton.icon(
-            icon: const Icon(Icons.close, size: 18),
-            label: const Text('Decline'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () async {
-              await provider.declineChatRequest(requestId);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Request declined')),
-                );
-              }
-            },
+  Future<bool?> _confirmDelete(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete notification?'),
+        content: const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Accept'),
-            onPressed: () async {
-              await provider.acceptChatRequest(requestId);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Request accepted')),
-                );
-              }
-            },
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
   }
+}
 
-  IconData _getNotificationIcon(NotificationType type) {
-    switch (type) {
-      case NotificationType.matchRequest:
-        return Icons.person_add;
-      case NotificationType.groupInvite:
-        return Icons.group_add;
-      case NotificationType.message:
-        return Icons.message;
-      case NotificationType.matchFound:
-        return Icons.check_circle;
-    }
+/// ─────────────────────────────────────────────
+/// Helpers
+/// ─────────────────────────────────────────────
+IconData _getIcon(NotificationType type) {
+  switch (type) {
+    case NotificationType.matchRequest:
+      return Icons.person_add;
+    case NotificationType.groupInvite:
+      return Icons.group_add;
+    case NotificationType.message:
+      return Icons.message;
+    case NotificationType.matchFound:
+      return Icons.check_circle;
   }
+}
 
-  Color _getNotificationColor(BuildContext context, NotificationType type) {
-    switch (type) {
-      case NotificationType.matchRequest:
-        return Theme.of(context).colorScheme.primary;
-      case NotificationType.groupInvite:
-        return Theme.of(context).colorScheme.secondary;
-      case NotificationType.message:
-        return Theme.of(context).colorScheme.tertiary;
-      case NotificationType.matchFound:
-        return Colors.green;
-    }
+Color _getColor(BuildContext context, NotificationType type) {
+  final scheme = Theme.of(context).colorScheme;
+
+  switch (type) {
+    case NotificationType.matchRequest:
+      return scheme.primary;
+    case NotificationType.groupInvite:
+      return scheme.secondary;
+    case NotificationType.message:
+      return scheme.tertiary;
+    case NotificationType.matchFound:
+      return Colors.green;
   }
+}
 
-  String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+String _formatTime(DateTime time) {
+  final diff = DateTime.now().difference(time);
 
-    if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${timestamp.day}/${timestamp.month}/${timestamp.year}';
-    }
-  }
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
 
-  void _handleNotificationTap(
-    BuildContext context,
-    NotificationItem notification,
-  ) {
-    // Navigate based on notification type
-    switch (notification.type) {
-      case NotificationType.message:
-        // Navigate to chat
-        break;
-      case NotificationType.matchFound:
-        // Navigate to home with results
-        break;
-      case NotificationType.matchRequest:
-      case NotificationType.groupInvite:
-        // Show detail dialog
-        break;
-    }
+  return '${time.day}/${time.month}/${time.year}';
+}
+
+void _handleTap(BuildContext context, NotificationItem notification) {
+  switch (notification.type) {
+    case NotificationType.message:
+      break;
+    case NotificationType.matchFound:
+      break;
+    case NotificationType.matchRequest:
+    case NotificationType.groupInvite:
+      break;
   }
 }
