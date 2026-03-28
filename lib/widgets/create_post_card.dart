@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-import '../models/post_model.dart';
+import 'package:provider/provider.dart';
+import '../providers/post_provider.dart';
 
 class CreatePostCard extends StatefulWidget {
-  final Function(Post) onPostCreated;
+  final String anonymousId;
+  final bool isSubmitting;
 
   const CreatePostCard({
     super.key,
-    required this.onPostCreated,
+    required this.anonymousId,
+    this.isSubmitting = false,
   });
 
   @override
@@ -29,16 +32,14 @@ class _CreatePostCardState extends State<CreatePostCard> {
       _characterCount >= 50 && _characterCount <= 2000 && _consentGiven;
 
   void _submitPost() {
-    if (!_isValid) return;
+    if (!_isValid || widget.isSubmitting) return;
 
-    final post = Post(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final postProvider = context.read<PostProvider>();
+    postProvider.submitPost(
+      anonymousId: widget.anonymousId,
       content: _controller.text,
-      createdAt: DateTime.now(),
-      riskLevel: RiskLevel.low, // Will be determined by backend
     );
 
-    widget.onPostCreated(post);
     _controller.clear();
     setState(() {
       _consentGiven = false;
@@ -126,6 +127,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   controller: _controller,
                   maxLines: 8,
                   maxLength: 2000,
+                  enabled: !widget.isSubmitting,
                   decoration: InputDecoration(
                     hintText:
                         'I feel overwhelmed with studies and don\'t know how to handle the pressure...',
@@ -144,11 +146,13 @@ class _CreatePostCardState extends State<CreatePostCard> {
                 // Consent checkbox
                 CheckboxListTile(
                   value: _consentGiven,
-                  onChanged: (value) {
-                    setState(() {
-                      _consentGiven = value ?? false;
-                    });
-                  },
+                  onChanged: widget.isSubmitting
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _consentGiven = value ?? false;
+                          });
+                        },
                   title: const Text(
                     'I understand my text will be used by AI to find support',
                   ),
@@ -162,9 +166,20 @@ class _CreatePostCardState extends State<CreatePostCard> {
 
                 // Submit button
                 FilledButton.icon(
-                  onPressed: _isValid ? _submitPost : null,
-                  icon: const Icon(Icons.send),
-                  label: const Text('Submit Post'),
+                  onPressed:
+                      _isValid && !widget.isSubmitting ? _submitPost : null,
+                  icon: widget.isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send),
+                  label: Text(
+                      widget.isSubmitting ? 'Submitting...' : 'Submit Post'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),

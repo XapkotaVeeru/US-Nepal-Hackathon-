@@ -1,71 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/notification_provider.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Mock notification data
-    final notifications = [
-      NotificationItem(
-        id: '1',
-        type: NotificationType.matchRequest,
-        title: 'New Match Request',
-        message: 'Anonymous Butterfly wants to connect with you',
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        isRead: false,
-        actionData: {'userId': '123', 'userName': 'Anonymous Butterfly'},
-      ),
-      NotificationItem(
-        id: '2',
-        type: NotificationType.groupInvite,
-        title: 'Group Invitation',
-        message: 'You\'ve been invited to join "Academic Stress Support"',
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-        isRead: false,
-        actionData: {'groupId': '456', 'groupName': 'Academic Stress Support'},
-      ),
-      NotificationItem(
-        id: '3',
-        type: NotificationType.message,
-        title: 'New Message',
-        message: 'Anonymous Dove sent you a message',
-        timestamp: DateTime.now().subtract(const Duration(days: 1)),
-        isRead: true,
-        actionData: {'chatId': '789'},
-      ),
-      NotificationItem(
-        id: '4',
-        type: NotificationType.matchFound,
-        title: 'Match Found!',
-        message: 'We found 3 people with similar experiences',
-        timestamp: DateTime.now().subtract(const Duration(days: 2)),
-        isRead: true,
-        actionData: {'postId': '101'},
-      ),
-    ];
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.done_all),
-            onPressed: () {
-              // Mark all as read
+          Consumer<NotificationProvider>(
+            builder: (context, provider, child) {
+              return IconButton(
+                icon: const Icon(Icons.done_all),
+                onPressed: provider.notifications.isEmpty
+                    ? null
+                    : () => provider.markAllAsRead(),
+                tooltip: 'Mark all as read',
+              );
             },
-            tooltip: 'Mark all as read',
           ),
         ],
       ),
-      body: notifications.isEmpty
-          ? _buildEmptyState(context)
-          : ListView.builder(
-              itemCount: notifications.length,
-              itemBuilder: (context, index) {
-                return _buildNotificationTile(context, notifications[index]);
-              },
-            ),
+      body: Consumer<NotificationProvider>(
+        builder: (context, provider, child) {
+          if (provider.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (provider.notifications.isEmpty) {
+            return _buildEmptyState(context);
+          }
+
+          return ListView.builder(
+            itemCount: provider.notifications.length,
+            itemBuilder: (context, index) {
+              return _buildNotificationTile(
+                context,
+                provider.notifications[index],
+                provider,
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -101,6 +81,7 @@ class NotificationsScreen extends StatelessWidget {
   Widget _buildNotificationTile(
     BuildContext context,
     NotificationItem notification,
+    NotificationProvider provider,
   ) {
     return Dismissible(
       key: Key(notification.id),
@@ -112,7 +93,7 @@ class NotificationsScreen extends StatelessWidget {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       onDismissed: (direction) {
-        // Delete notification
+        provider.deleteNotification(notification.id);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Notification deleted')));
@@ -158,12 +139,13 @@ class NotificationsScreen extends StatelessWidget {
               ),
               isThreeLine: true,
               onTap: () {
+                provider.markAsRead(notification.id);
                 _handleNotificationTap(context, notification);
               },
             ),
             if (notification.type == NotificationType.matchRequest ||
                 notification.type == NotificationType.groupInvite)
-              _buildActionButtons(context, notification),
+              _buildActionButtons(context, notification, provider),
           ],
         ),
       ),
@@ -173,7 +155,11 @@ class NotificationsScreen extends StatelessWidget {
   Widget _buildActionButtons(
     BuildContext context,
     NotificationItem notification,
+    NotificationProvider provider,
   ) {
+    final requestId = notification.actionData?['requestId'] as String?;
+    if (requestId == null) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
@@ -185,22 +171,26 @@ class NotificationsScreen extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () {
-              // Decline request
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Request declined')));
+            onPressed: () async {
+              await provider.declineChatRequest(requestId);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Request declined')),
+                );
+              }
             },
           ),
           const SizedBox(width: 8),
           FilledButton.icon(
             icon: const Icon(Icons.check, size: 18),
             label: const Text('Accept'),
-            onPressed: () {
-              // Accept request
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Request accepted')));
+            onPressed: () async {
+              await provider.acceptChatRequest(requestId);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Request accepted')),
+                );
+              }
             },
           ),
         ],
@@ -267,26 +257,4 @@ class NotificationsScreen extends StatelessWidget {
         break;
     }
   }
-}
-
-enum NotificationType { matchRequest, groupInvite, message, matchFound }
-
-class NotificationItem {
-  final String id;
-  final NotificationType type;
-  final String title;
-  final String message;
-  final DateTime timestamp;
-  final bool isRead;
-  final Map<String, dynamic>? actionData;
-
-  NotificationItem({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.message,
-    required this.timestamp,
-    required this.isRead,
-    this.actionData,
-  });
 }

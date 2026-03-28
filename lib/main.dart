@@ -1,37 +1,80 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
+import 'services/anonymous_id_service.dart';
+import 'services/api_service.dart';
+import 'providers/app_state_provider.dart';
+import 'providers/post_provider.dart';
+import 'providers/chat_provider.dart';
+import 'providers/notification_provider.dart';
 
-void main() {
-  runApp(const MentalHealthSupportApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize services
+  final anonymousIdService = await AnonymousIdService.create();
+
+  // TODO: Replace with actual backend URL
+  const apiBaseUrl = 'https://your-api-gateway-url.amazonaws.com';
+  final apiService = ApiService(baseUrl: apiBaseUrl);
+
+  runApp(MentalHealthSupportApp(
+    anonymousIdService: anonymousIdService,
+    apiService: apiService,
+  ));
 }
 
 class MentalHealthSupportApp extends StatelessWidget {
-  const MentalHealthSupportApp({super.key});
+  final AnonymousIdService anonymousIdService;
+  final ApiService apiService;
+
+  const MentalHealthSupportApp({
+    super.key,
+    required this.anonymousIdService,
+    required this.apiService,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Mental Health Support',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6B4CE6),
-          brightness: Brightness.light,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AppStateProvider(anonymousIdService)..initialize(),
         ),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6B4CE6),
-          brightness: Brightness.dark,
+        ChangeNotifierProvider(
+          create: (_) => PostProvider(apiService),
         ),
-        useMaterial3: true,
+        ChangeNotifierProvider(
+          create: (_) => ChatProvider(apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) =>
+              NotificationProvider(apiService)..loadMockNotifications(),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Mental Health Support',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6B4CE6),
+            brightness: Brightness.light,
+          ),
+          useMaterial3: true,
+          appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
+        ),
+        darkTheme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6B4CE6),
+            brightness: Brightness.dark,
+          ),
+          useMaterial3: true,
+        ),
+        home: const MainNavigationScreen(),
+        debugShowCheckedModeBanner: false,
       ),
-      home: const MainNavigationScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }

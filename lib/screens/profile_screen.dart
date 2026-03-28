@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_state_provider.dart';
+import '../providers/post_provider.dart';
 import '../models/post_model.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-
-  @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends State<ProfileScreen> {
-  bool _isProfileSaved = false;
-  String _anonymousId = 'anon_abc123xyz';
 
   @override
   Widget build(BuildContext context) {
@@ -20,132 +16,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              _showSettingsDialog(context);
-            },
+            onPressed: () => _showSettingsDialog(context),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Profile card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer,
-                      child: Icon(
-                        Icons.person,
-                        size: 40,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Anonymous User',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'ID: $_anonymousId',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+      body: Consumer2<AppStateProvider, PostProvider>(
+        builder: (context, appState, postProvider, child) {
+          if (appState.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                    // Save profile option
-                    if (!_isProfileSaved)
-                      FilledButton.icon(
-                        onPressed: () {
-                          _showSaveProfileDialog(context);
-                        },
-                        icon: const Icon(Icons.save),
-                        label: const Text('Save Profile'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
+          final user = appState.currentUser;
+          if (user == null) {
+            return const Center(child: Text('No user data'));
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Profile card
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          child: Icon(
+                            Icons.person,
+                            size: 40,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
                         ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(8),
+                        const SizedBox(height: 16),
+                        Text(
+                          user.displayName,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onPrimaryContainer,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Profile Saved',
-                              style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
+                        const SizedBox(height: 4),
+                        Text(
+                          'ID: ${user.anonymousId.substring(0, 12)}...',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
                               ),
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: () =>
+                              _showSaveProfileDialog(context, user.anonymousId),
+                          icon: const Icon(Icons.save),
+                          label: const Text('Save Profile'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Stats card
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Your Activity',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildStatItem(
+                              context,
+                              postProvider.postHistory.length.toString(),
+                              'Posts',
+                              Icons.post_add,
+                            ),
+                            _buildStatItem(
+                              context,
+                              user.totalChats.toString(),
+                              'Chats',
+                              Icons.chat_bubble,
+                            ),
+                            _buildStatItem(
+                              context,
+                              '0',
+                              'Groups',
+                              Icons.group,
                             ),
                           ],
                         ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Stats card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Your Activity',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildStatItem(context, '5', 'Posts', Icons.post_add),
-                        _buildStatItem(
-                          context,
-                          '3',
-                          'Chats',
-                          Icons.chat_bubble,
-                        ),
-                        _buildStatItem(context, '2', 'Groups', Icons.group),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-            // My posts section
-            Text('My Posts', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            _buildMyPostsList(context),
-          ],
-        ),
+                // My posts section
+                Text('My Posts', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                _buildMyPostsList(context, postProvider.postHistory),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -171,30 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildMyPostsList(BuildContext context) {
-    // Mock posts data
-    final posts = [
-      Post(
-        id: '1',
-        content:
-            'I feel overwhelmed with studies and don\'t know how to handle the pressure...',
-        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-        riskLevel: RiskLevel.low,
-      ),
-      Post(
-        id: '2',
-        content: 'Feeling anxious about upcoming exams and career decisions...',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        riskLevel: RiskLevel.medium,
-      ),
-      Post(
-        id: '3',
-        content: 'Having trouble sleeping due to stress...',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        riskLevel: RiskLevel.low,
-      ),
-    ];
-
+  Widget _buildMyPostsList(BuildContext context, List<Post> posts) {
     if (posts.isEmpty) {
       return Card(
         child: Padding(
@@ -259,13 +224,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   _formatTimestamp(post.createdAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.more_vert, size: 20),
                   onPressed: () {
-                    _showPostOptions(context, post);
+                    // Show post options
                   },
                 ),
               ],
@@ -309,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showSaveProfileDialog(BuildContext context) {
+  void _showSaveProfileDialog(BuildContext context, String anonymousId) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -342,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 4),
                   SelectableText(
-                    _anonymousId,
+                    anonymousId,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
@@ -363,19 +328,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          FilledButton.icon(
             onPressed: () {
-              setState(() {
-                _isProfileSaved = true;
-              });
+              Clipboard.setData(ClipboardData(text: anonymousId));
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Profile saved! Keep your ID safe.'),
+                  content: Text('Anonymous ID copied to clipboard!'),
                 ),
               );
             },
-            child: const Text('Save'),
+            icon: const Icon(Icons.copy),
+            label: const Text('Copy ID'),
           ),
         ],
       ),
@@ -390,15 +354,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete All Data'),
-              subtitle: const Text('Remove all your posts and chats'),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteConfirmation(context);
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.refresh),
               title: const Text('Start Fresh'),
@@ -428,36 +383,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete All Data?'),
-        content: const Text(
-          'This will permanently delete all your posts, chats, and messages. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('All data deleted')));
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showStartFreshConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -472,15 +397,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
-              setState(() {
-                _anonymousId = 'anon_${DateTime.now().millisecondsSinceEpoch}';
-                _isProfileSaved = false;
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('New anonymous ID generated')),
-              );
+            onPressed: () async {
+              final appState = context.read<AppStateProvider>();
+              await appState.clearProfile();
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('New anonymous ID generated')),
+                );
+              }
             },
             child: const Text('Start Fresh'),
           ),
@@ -504,35 +429,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'Remember: This is not a replacement for professional therapy. If you\'re in crisis, please contact emergency services.',
         ),
       ],
-    );
-  }
-
-  void _showPostOptions(BuildContext context, Post post) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.visibility),
-              title: const Text('View Full Post'),
-              onTap: () {
-                Navigator.pop(context);
-                // Show full post
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete Post'),
-              onTap: () {
-                Navigator.pop(context);
-                // Delete post
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
