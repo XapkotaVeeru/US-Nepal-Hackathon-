@@ -229,11 +229,11 @@ class HelpMeNowButton extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.spa, color: Colors.teal),
-            const SizedBox(width: 8),
-            const Text('5-4-3-2-1 Grounding'),
+            Icon(Icons.spa, color: Colors.teal),
+            SizedBox(width: 8),
+            Text('5-4-3-2-1 Grounding'),
           ],
         ),
         content: SingleChildScrollView(

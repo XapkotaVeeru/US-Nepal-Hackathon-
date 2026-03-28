@@ -6,7 +6,7 @@ class CommunityProvider with ChangeNotifier {
   final List<MicroCommunity> _joinedCommunities = [];
   String? _autoJoinBanner;
   MicroCommunity? _lastAutoJoined;
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   CommunityProvider() {
     _loadCommunities();

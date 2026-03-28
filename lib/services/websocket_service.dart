@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/message_model.dart';
 
@@ -116,20 +117,20 @@ class WebSocketService {
         _messageController.add(message);
       }
     } catch (e) {
-      print('Error parsing message: $e');
+      debugPrint('Error parsing message: $e');
     }
   }
 
   /// Handle errors
   void _handleError(dynamic error) {
-    print('WebSocket error: $error');
+    debugPrint('WebSocket error: $error');
     _updateState(ConnectionState.disconnected);
     _attemptReconnect();
   }
 
   /// Handle disconnection
   void _handleDisconnect() {
-    print('WebSocket disconnected');
+    debugPrint('WebSocket disconnected');
     _updateState(ConnectionState.disconnected);
     _attemptReconnect();
   }
@@ -137,7 +138,7 @@ class WebSocketService {
   /// Attempt to reconnect
   void _attemptReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-      print('Max reconnect attempts reached');
+      debugPrint('Max reconnect attempts reached');
       return;
     }
 
@@ -146,7 +147,7 @@ class WebSocketService {
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(_reconnectDelay, () {
-      print('Reconnecting... (attempt $_reconnectAttempts)');
+      debugPrint('Reconnecting... (attempt $_reconnectAttempts)');
       connect();
     });
   }

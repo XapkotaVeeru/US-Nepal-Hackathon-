@@ -28,7 +28,7 @@ class AppStateProvider with ChangeNotifier {
       _currentUser = await _anonymousIdService.getCurrentUser();
       _isInitialized = true;
     } catch (e) {
-      print('Error initializing app state: $e');
+      debugPrint('Error initializing app state: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -49,7 +49,7 @@ class AppStateProvider with ChangeNotifier {
       await _anonymousIdService.importProfile(profileData);
       _currentUser = await _anonymousIdService.getCurrentUser();
     } catch (e) {
-      print('Error importing profile: $e');
+      debugPrint('Error importing profile: $e');
       rethrow;
     } finally {
       _isLoading = false;
@@ -68,7 +68,7 @@ class AppStateProvider with ChangeNotifier {
       _isInitialized = false;
       await initialize();
     } catch (e) {
-      print('Error clearing profile: $e');
+      debugPrint('Error clearing profile: $e');
       rethrow;
     } finally {
       _isLoading = false;

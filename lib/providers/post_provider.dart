@@ -9,7 +9,7 @@ class PostProvider with ChangeNotifier {
   String? _error;
   Post? _currentPost;
   SubmissionResponse? _matchResults;
-  List<Post> _postHistory = [];
+  final List<Post> _postHistory = [];
 
   PostProvider(this._apiService);
 
@@ -49,7 +49,7 @@ class PostProvider with ChangeNotifier {
       _postHistory.insert(0, _currentPost!);
     } catch (e) {
       _error = e.toString();
-      print('Error submitting post: $e');
+      debugPrint('Error submitting post: $e');
     } finally {
       _isSubmitting = false;
       notifyListeners();
