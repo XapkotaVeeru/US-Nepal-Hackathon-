@@ -18,7 +18,24 @@ def create_anonymous_user(session: Session, payload: AnonymousUserCreate) -> Ano
 def get_user_or_404(session: Session, user_id: str) -> AnonymousUser:
     user = session.get(AnonymousUser, user_id)
     if not user:
-      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+def get_or_create_user(
+    session: Session,
+    user_id: str,
+    display_name: str | None = None,
+) -> AnonymousUser:
+    user = session.get(AnonymousUser, user_id)
+    if user:
+        return user
+
+    name = display_name or _generate_display_name()
+    user = AnonymousUser(id=user_id, display_name=name)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
     return user
 
 

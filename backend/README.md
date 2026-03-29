@@ -103,6 +103,7 @@ The API will be available at:
 - `GET /sessions/{session_id}/messages`
 - `POST /sessions/{session_id}/messages`
 - `WS /ws/sessions/{session_id}`
+- `WS /ws` (legacy-compatible with current Flutter WebSocket payloads)
 
 ### Notifications
 
@@ -126,6 +127,8 @@ These currently return `501 Not Implemented` and are only meant to reserve a cle
 ## WebSocket notes
 
 The realtime chat layer uses a simple in-memory connection manager keyed by `session_id`. This is intentionally lightweight and good for local development or a hackathon environment. For multi-instance deployment later, it can be replaced with Redis or another shared pub/sub layer.
+
+The `/ws` endpoint supports the existing Flutter `action` payloads (`joinCommunity`, `sendMessage`) so the mobile app can connect without code changes.
 
 ## Suggested next steps
 

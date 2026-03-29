@@ -7,8 +7,9 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[str, list[WebSocket]] = defaultdict(list)
 
-    async def connect(self, session_id: str, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def connect(self, session_id: str, websocket: WebSocket, *, accept: bool = True) -> None:
+        if accept:
+            await websocket.accept()
         self._connections[session_id].append(websocket)
 
     def disconnect(self, session_id: str, websocket: WebSocket) -> None:
