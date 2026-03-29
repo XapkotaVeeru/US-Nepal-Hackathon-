@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../models/notification_model.dart';
 import '../providers/notification_provider.dart';
 import 'chat_room_screen.dart';
@@ -33,9 +34,6 @@ class NotificationsScreen extends StatelessWidget {
   }
 }
 
-/// ─────────────────────────────────────────────
-/// Empty State
-/// ─────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -72,9 +70,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// ─────────────────────────────────────────────
-/// Notification Tile
-/// ─────────────────────────────────────────────
 class NotificationTile extends StatelessWidget {
   final NotificationItem notification;
 
@@ -84,15 +79,14 @@ class NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.read<NotificationProvider>();
     final theme = Theme.of(context);
-
     final isUnread = !notification.isRead;
+    final isActionable = notification.type == NotificationType.matchRequest ||
+        notification.type == NotificationType.groupInvite;
 
     return Dismissible(
       key: ValueKey(notification.id),
       direction: DismissDirection.endToStart,
-
       confirmDismiss: (_) => _confirmDelete(context),
-
       onDismissed: (_) {
         provider.deleteNotification(notification.id);
 
@@ -108,51 +102,78 @@ class NotificationTile extends StatelessWidget {
           ),
         );
       },
-
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
         color: theme.colorScheme.error,
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-
       child: Card(
         elevation: 0,
         color: isUnread
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
             : null,
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: _getColor(context, notification.type),
-            child: Icon(
-              _getIcon(notification.type),
-              color: Colors.white,
-            ),
-          ),
-          title: Text(
-            notification.title,
-            style: TextStyle(
-              fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(notification.message),
-              const SizedBox(height: 4),
-              Text(
-                _formatTime(notification.timestamp),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
+        child: Column(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: _getColor(context, notification.type),
+                child: Icon(
+                  _getIcon(notification.type),
+                  color: Colors.white,
                 ),
               ),
-            ],
-          ),
-          isThreeLine: true,
-          onTap: () {
-            provider.markAsRead(notification.id);
-            _handleTap(context, notification);
-          },
+              title: Text(
+                notification.title,
+                style: TextStyle(
+                  fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(notification.message),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatTime(notification.timestamp),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
+              isThreeLine: true,
+              onTap: () {
+                provider.markAsRead(notification.id);
+                _handleTap(context, notification);
+              },
+            ),
+            if (isActionable)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _decline(context, notification),
+                        child: const Text('Decline'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => _accept(context, notification),
+                        child: Text(
+                          notification.type == NotificationType.groupInvite
+                              ? 'Accept Group'
+                              : 'Accept Chat',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -177,11 +198,45 @@ class NotificationTile extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _accept(BuildContext context, NotificationItem notification) async {
+    final provider = context.read<NotificationProvider>();
+    provider.markAsRead(notification.id);
+
+    final requestId = notification.actionData?['requestId'] as String?;
+    if (requestId == null) return;
+
+    await provider.acceptChatRequest(requestId);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          notification.type == NotificationType.groupInvite
+              ? 'Group created. You can open it from Chats.'
+              : 'Chat is ready. You can open it from Chats.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _decline(
+    BuildContext context,
+    NotificationItem notification,
+  ) async {
+    final provider = context.read<NotificationProvider>();
+    final requestId = notification.actionData?['requestId'] as String?;
+    if (requestId == null) return;
+
+    await provider.declineChatRequest(requestId);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Request declined.')),
+    );
+  }
 }
 
-/// ─────────────────────────────────────────────
-/// Helpers
-/// ─────────────────────────────────────────────
 IconData _getIcon(NotificationType type) {
   switch (type) {
     case NotificationType.matchRequest:
@@ -242,23 +297,12 @@ void _handleTap(BuildContext context, NotificationItem notification) {
                   actionData['from_user_name'] ??
                   'Support Chat')
               .toString(),
-          communityEmoji:
-              (actionData['communityEmoji'] ?? actionData['community_emoji'] ?? '💬')
-                  .toString(),
+          communityEmoji: (actionData['communityEmoji'] ??
+                  actionData['community_emoji'] ??
+                  '💬')
+              .toString(),
         ),
       ),
     );
-    return;
-  }
-
-  switch (notification.type) {
-    case NotificationType.message:
-      break;
-    case NotificationType.matchFound:
-      break;
-    case NotificationType.matchRequest:
-    case NotificationType.groupInvite:
-    case NotificationType.system:
-      break;
   }
 }

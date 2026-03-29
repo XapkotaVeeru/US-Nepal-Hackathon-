@@ -12,12 +12,17 @@ import '../models/user_model.dart';
 
 class ApiService {
   final String baseUrl;
+  final String chatBaseUrl;
   final http.Client _client;
 
   ApiService({
     required this.baseUrl,
+    String? chatBaseUrl,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  })  : chatBaseUrl = chatBaseUrl ?? baseUrl,
+        _client = client ?? http.Client();
+
+  Uri _chatUri(String path) => Uri.parse('$chatBaseUrl$path');
 
   // ═══════════════════════════════════════════════
   //  Posts (POST /posts)
@@ -57,7 +62,7 @@ class ApiService {
         }
       } else {
         throw ApiException(
-          'Failed to submit post: ${response.statusCode}',
+          'Failed to submit post: ${response.statusCode} ${response.body}',
           response.statusCode,
         );
       }
@@ -277,7 +282,7 @@ class ApiService {
   Future<List<Message>> getCommunityMessages(String communityId) async {
     final candidates = [
       Uri.parse('$baseUrl/communities/$communityId/messages'),
-      Uri.parse('$baseUrl/sessions/$communityId/messages'),
+      _chatUri('/sessions/$communityId/messages'),
     ];
 
     for (final uri in candidates) {
@@ -687,7 +692,7 @@ class ApiService {
   Future<List<ChatSession>> getUserSessions(String anonymousId) async {
     try {
       final response = await _client.get(
-        Uri.parse('$baseUrl/users/$anonymousId/sessions'),
+        _chatUri('/users/$anonymousId/sessions'),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -711,7 +716,7 @@ class ApiService {
   Future<List<Message>> getSessionMessages(String sessionId) async {
     try {
       final response = await _client.get(
-        Uri.parse('$baseUrl/sessions/$sessionId/messages'),
+        _chatUri('/sessions/$sessionId/messages'),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -741,7 +746,7 @@ class ApiService {
   }) async {
     try {
       final response = await _client.post(
-        Uri.parse('$baseUrl/sessions/$sessionId/messages'),
+        _chatUri('/sessions/$sessionId/messages'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'sender_id': senderId,
@@ -763,6 +768,28 @@ class ApiService {
     return null;
   }
 
+  Future<List<Map<String, dynamic>>> getChatRequests(String anonymousId) async {
+    try {
+      final response = await _client.get(
+        _chatUri('/users/$anonymousId/chat-requests'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data['requests'] is List) {
+          return (data['requests'] as List)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching chat requests: $e');
+    }
+
+    return [];
+  }
+
   Future<ChatRequestResult> sendChatRequest({
     required String fromUserId,
     required String toUserId,
@@ -773,7 +800,7 @@ class ApiService {
   }) async {
     try {
       final response = await _client.post(
-        Uri.parse('$baseUrl/chat-requests'),
+        _chatUri('/chat-requests'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'from_user_id': fromUserId,
@@ -804,7 +831,7 @@ class ApiService {
   Future<void> acceptChatRequest(String requestId) async {
     try {
       final response = await _client.post(
-        Uri.parse('$baseUrl/chat-requests/$requestId/accept'),
+        _chatUri('/chat-requests/$requestId/accept'),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -823,7 +850,7 @@ class ApiService {
   Future<void> declineChatRequest(String requestId) async {
     try {
       final response = await _client.post(
-        Uri.parse('$baseUrl/chat-requests/$requestId/decline'),
+        _chatUri('/chat-requests/$requestId/decline'),
         headers: {'Content-Type': 'application/json'},
       );
 

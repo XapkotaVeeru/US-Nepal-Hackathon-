@@ -44,6 +44,23 @@ class NotificationProvider with ChangeNotifier {
     }
   }
 
+  Future<void> loadChatRequests(String anonymousId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final requests = await _apiService.getChatRequests(anonymousId);
+      _notifications = requests.map(_notificationFromRequest).toList();
+    } catch (e) {
+      _error = e.toString();
+      debugPrint('Error loading chat requests: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<NotificationItem?> createNotification({
     required NotificationType type,
     required String title,
@@ -71,6 +88,64 @@ class NotificationProvider with ChangeNotifier {
   void addNotification(NotificationItem notification) {
     _notifications.insert(0, notification);
     notifyListeners();
+  }
+
+  void addPendingMatchRequest({
+    required String requesterId,
+    required String requesterName,
+    required String targetUserId,
+    required String targetUserName,
+  }) {
+    final requestId = 'req_${DateTime.now().microsecondsSinceEpoch}';
+    addNotification(
+      NotificationItem(
+        id: requestId,
+        type: NotificationType.matchRequest,
+        title: 'Chat Request',
+        message:
+            '$requesterName wants to start a private chat with $targetUserName.',
+        timestamp: DateTime.now(),
+        isRead: false,
+        actionData: {
+          'requestId': requestId,
+          'requestType': 'direct',
+          'requesterId': requesterId,
+          'requesterName': requesterName,
+          'targetUserId': targetUserId,
+          'targetUserName': targetUserName,
+        },
+      ),
+    );
+  }
+
+  void addPendingGroupInvite({
+    required String requesterId,
+    required String requesterName,
+    required String targetUserId,
+    required String targetUserName,
+    required String groupName,
+  }) {
+    final requestId = 'req_${DateTime.now().microsecondsSinceEpoch}';
+    addNotification(
+      NotificationItem(
+        id: requestId,
+        type: NotificationType.groupInvite,
+        title: 'Group Request',
+        message:
+            '$requesterName wants to create "$groupName" with $targetUserName.',
+        timestamp: DateTime.now(),
+        isRead: false,
+        actionData: {
+          'requestId': requestId,
+          'requestType': 'group',
+          'requesterId': requesterId,
+          'requesterName': requesterName,
+          'targetUserId': targetUserId,
+          'targetUserName': targetUserName,
+          'groupName': groupName,
+        },
+      ),
+    );
   }
 
   void markAsRead(String notificationId) {
@@ -120,7 +195,11 @@ class NotificationProvider with ChangeNotifier {
 
     try {
       await _apiService.acceptChatRequest(requestId);
-      await loadNotifications();
+      if (_activeUserId != null) {
+        await loadNotifications();
+      } else {
+        _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
+      }
     } catch (e) {
       _error = e.toString();
       debugPrint('Error accepting chat request: $e');
@@ -136,7 +215,11 @@ class NotificationProvider with ChangeNotifier {
 
     try {
       await _apiService.declineChatRequest(requestId);
-      await loadNotifications();
+      if (_activeUserId != null) {
+        await loadNotifications();
+      } else {
+        _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
+      }
     } catch (e) {
       _error = e.toString();
       debugPrint('Error declining chat request: $e');
@@ -166,5 +249,42 @@ class NotificationProvider with ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  NotificationItem _notificationFromRequest(Map<String, dynamic> request) {
+    final type = request['type'] == 'group'
+        ? NotificationType.groupInvite
+        : NotificationType.matchRequest;
+    final requestId = request['requestId']?.toString() ?? '';
+    final createdAt = DateTime.tryParse(
+          request['createdAt']?.toString() ?? '',
+        ) ??
+        DateTime.now();
+    final fromUserName =
+        request['fromUserName']?.toString() ?? 'Anonymous Peer';
+    final toUserName = request['toUserName']?.toString() ?? 'You';
+    final groupName = request['groupName']?.toString();
+
+    return NotificationItem(
+      id: requestId,
+      type: type,
+      title: type == NotificationType.groupInvite
+          ? 'Group Request'
+          : 'Chat Request',
+      message: type == NotificationType.groupInvite
+          ? '$fromUserName wants to create "$groupName" with $toUserName.'
+          : '$fromUserName wants to start a private chat with $toUserName.',
+      timestamp: createdAt,
+      isRead: false,
+      actionData: {
+        'requestId': requestId,
+        'requestType': request['type'],
+        'requesterId': request['fromUserId'],
+        'requesterName': fromUserName,
+        'targetUserId': request['toUserId'],
+        'targetUserName': toUserName,
+        'groupName': groupName,
+      },
+    );
   }
 }

@@ -8,6 +8,26 @@ The app combines a local-first mobile experience with backend options that suppo
 
 Important: this project is a peer-support tool, not a replacement for professional medical care, therapy, or emergency services.
 
+# TEAM: NEURAL NETWORK (TEAM 57)
+
+## 👥 Team Members
+
+- **Birat Sapkota**   
+- **Ayush Khanal** 
+- **Umesh Rajbanshi** 
+- **Anish Ghimire**
+- **Govinda Bhandari** 
+
+## 👥 Team Members
+
+| Name | Email | GitHub |
+|------|-------|--------|
+| Birat Sapkota | birat.078bei018@acem.edu.np | https://github.com/XapkotaVeeru |
+| Ayush Khanal| ayukhanalsh100@gmail.com | https://github.com/ayushkhanal1 |
+| Umesh Rajbanshi | ums.rbc07@gmail.com | https://github.com/umess-ss |
+| Anish Ghimire | anish.078bei008@acem.edu.np | https://github.com/itsmeanish13 |
+| Govinda Bhandari | govinda.078bei021@acem.edu.np | https://github.com/gobinda789 |
+
 ## Contents
 
 - [Overview](#overview)
