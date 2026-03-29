@@ -12,12 +12,17 @@ class MoodEntry {
   });
 
   factory MoodEntry.fromJson(Map<String, dynamic> json) {
+    final moodLevelValue = json['moodLevel'] ?? json['mood_level'];
+    final createdAtValue = json['createdAt'] ?? json['created_at'];
+
     return MoodEntry(
       id: json['id'] as String? ?? '',
-      moodLevel: json['moodLevel'] as int? ?? 3,
+      moodLevel: moodLevelValue is int
+          ? moodLevelValue
+          : int.tryParse(moodLevelValue?.toString() ?? '') ?? 3,
       note: json['note'] as String? ?? '',
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+      createdAt: createdAtValue != null
+          ? DateTime.tryParse(createdAtValue.toString()) ?? DateTime.now()
           : DateTime.now(),
     );
   }

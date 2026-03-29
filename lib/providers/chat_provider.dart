@@ -325,11 +325,19 @@ class ChatProvider with ChangeNotifier {
   Future<void> sendChatRequest({
     required String fromUserId,
     required String toUserId,
+    String? fromUserName,
+    String? toUserName,
+    String type = 'direct',
+    String? groupName,
   }) async {
     try {
       await _apiService.sendChatRequest(
         fromUserId: fromUserId,
         toUserId: toUserId,
+        fromUserName: fromUserName,
+        toUserName: toUserName,
+        type: type,
+        groupName: groupName,
       );
     } catch (e) {
       _error = e.toString();

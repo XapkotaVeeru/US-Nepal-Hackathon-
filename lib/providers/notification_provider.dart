@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import '../services/api_service.dart';
-import 'chat_provider.dart';
 
 enum NotificationType { matchRequest, groupInvite, message, matchFound }
 
@@ -47,7 +46,6 @@ class NotificationItem {
 
 class NotificationProvider with ChangeNotifier {
   final ApiService _apiService;
-  ChatProvider? _chatProvider;
 
   List<NotificationItem> _notifications = [];
   bool _isLoading = false;
@@ -60,14 +58,26 @@ class NotificationProvider with ChangeNotifier {
   String? get error => _error;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
 
-  NotificationProvider bindChatProvider(ChatProvider chatProvider) {
-    _chatProvider = chatProvider;
-    return this;
-  }
-
   void addNotification(NotificationItem notification) {
     _notifications.insert(0, notification);
     notifyListeners();
+  }
+
+  Future<void> loadChatRequests(String anonymousId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final requests = await _apiService.getChatRequests(anonymousId);
+      _notifications = requests.map(_notificationFromRequest).toList();
+    } catch (e) {
+      _error = e.toString();
+      debugPrint('Error loading chat requests: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   void addPendingMatchRequest({
@@ -165,10 +175,6 @@ class NotificationProvider with ChangeNotifier {
         debugPrint('Accept chat request API failed, keeping local flow: $e');
       }
 
-      if (notification != null) {
-        _createSessionFromNotification(notification);
-      }
-
       _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
     } catch (e) {
       _error = e.toString();
@@ -205,19 +211,40 @@ class NotificationProvider with ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+  NotificationItem _notificationFromRequest(Map<String, dynamic> request) {
+    final type = request['type'] == 'group'
+        ? NotificationType.groupInvite
+        : NotificationType.matchRequest;
+    final requestId = request['requestId']?.toString() ?? '';
+    final createdAt = DateTime.tryParse(
+          request['createdAt']?.toString() ?? '',
+        ) ??
+        DateTime.now();
+    final fromUserName =
+        request['fromUserName']?.toString() ?? 'Anonymous Peer';
+    final toUserName = request['toUserName']?.toString() ?? 'You';
+    final groupName = request['groupName']?.toString();
 
-  void _createSessionFromNotification(NotificationItem notification) {
-    final actionData = notification.actionData;
-    if (_chatProvider == null || actionData == null) return;
-
-    _chatProvider!.createSessionFromAcceptedRequest(
-      requestId: actionData['requestId'] as String? ?? notification.id,
-      currentUserId: actionData['requesterId'] as String? ?? 'unknown',
-      otherUserId: actionData['targetUserId'] as String? ?? 'peer',
-      otherUserName:
-          actionData['targetUserName'] as String? ?? 'Anonymous Peer',
-      isGroup: notification.type == NotificationType.groupInvite,
-      groupName: actionData['groupName'] as String?,
+    return NotificationItem(
+      id: requestId,
+      type: type,
+      title: type == NotificationType.groupInvite
+          ? 'Group Request'
+          : 'Chat Request',
+      message: type == NotificationType.groupInvite
+          ? '$fromUserName wants to create "$groupName" with $toUserName.'
+          : '$fromUserName wants to start a private chat with $toUserName.',
+      timestamp: createdAt,
+      isRead: false,
+      actionData: {
+        'requestId': requestId,
+        'requestType': request['type'],
+        'requesterId': request['fromUserId'],
+        'requesterName': fromUserName,
+        'targetUserId': request['toUserId'],
+        'targetUserName': toUserName,
+        'groupName': groupName,
+      },
     );
   }
 }
