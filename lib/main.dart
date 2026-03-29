@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/chats_screen.dart';
-import 'screens/discover_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/insights_screen.dart';
@@ -38,7 +37,7 @@ void main() async {
   final anonymousIdService = await AnonymousIdService.create();
 
   const apiBaseUrl =
-      'https://x0dge4fjri.execute-api.us-east-1.amazonaws.com/prod';
+      'https://13qpnxtgok.execute-api.us-east-1.amazonaws.com/prod';
   final apiService = ApiService(baseUrl: apiBaseUrl);
 
   runApp(MentalHealthSupportApp(
@@ -108,9 +107,11 @@ class MentalHealthSupportApp extends StatelessWidget {
             return chatProvider;
           },
         ),
-        ChangeNotifierProvider(
-          create: (_) =>
-              NotificationProvider(apiService)..loadMockNotifications(),
+        ChangeNotifierProxyProvider<ChatProvider, NotificationProvider>(
+          create: (_) => NotificationProvider(apiService),
+          update: (_, chatProvider, notificationProvider) =>
+              (notificationProvider ?? NotificationProvider(apiService))
+                  .bindChatProvider(chatProvider),
         ),
         ChangeNotifierProvider(
           create: (_) => CommunityProvider(apiService: apiService),
@@ -312,7 +313,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   final List<Widget> _screens = const [
     HomeScreen(),
-    DiscoverScreen(),
     ChatsScreen(),
     NotificationsScreen(),
     ProfileScreen(),
@@ -323,11 +323,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
       label: 'Home',
-    ),
-    _NavItem(
-      icon: Icons.explore_outlined,
-      activeIcon: Icons.explore,
-      label: 'Discover',
     ),
     _NavItem(
       icon: Icons.chat_bubble_outline_rounded,

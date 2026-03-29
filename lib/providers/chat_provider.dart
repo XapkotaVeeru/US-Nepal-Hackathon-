@@ -54,7 +54,12 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _sessions = await _apiService.getUserSessions(anonymousId);
+      final remoteSessions = await _apiService.getUserSessions(anonymousId);
+      final localOnlySessions = _sessions
+          .where((local) => !remoteSessions.any((remote) => remote.id == local.id))
+          .toList();
+      _sessions = [...localOnlySessions, ...remoteSessions];
+      _sortSessions();
     } catch (e) {
       _error = e.toString();
       debugPrint('Error loading sessions: $e');
@@ -154,6 +159,12 @@ class ChatProvider with ChangeNotifier {
     );
     _messagesBySession.putIfAbsent(communityId, () => []);
     _messagesBySession[communityId]!.add(msg);
+    _upsertSessionPreview(
+      sessionId: communityId,
+      lastMessage: content,
+      lastMessageTime: msg.timestamp,
+      createIfMissing: true,
+    );
     notifyListeners();
     sendCommunityMessage(communityId: communityId, content: content);
     _scheduleBotReply(communityId: communityId, content: content);
@@ -184,6 +195,11 @@ class ChatProvider with ChangeNotifier {
 
         _messagesBySession.putIfAbsent(communityId, () => []);
         _messagesBySession[communityId]!.add(botMessage);
+        _upsertSessionPreview(
+          sessionId: communityId,
+          lastMessage: reply,
+          lastMessageTime: botMessage.timestamp,
+        );
         notifyListeners();
         _pendingBotReplies.remove(communityId);
       },
@@ -279,14 +295,13 @@ class ChatProvider with ChangeNotifier {
     }
 
     // Update session last message if applicable
-    final sessionIndex = _sessions.indexWhere((s) => s.id == key);
-    if (sessionIndex != -1) {
-      _sessions[sessionIndex] = _sessions[sessionIndex].copyWith(
-        lastMessage: message.content,
-        lastMessageTime: message.timestamp,
-        unreadCount: _sessions[sessionIndex].unreadCount + 1,
-      );
-    }
+    _upsertSessionPreview(
+      sessionId: key,
+      lastMessage: message.content,
+      lastMessageTime: message.timestamp,
+      unreadDelta: 1,
+      createIfMissing: true,
+    );
 
     notifyListeners();
   }
@@ -322,6 +337,108 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  void createSessionFromAcceptedRequest({
+    required String requestId,
+    required String currentUserId,
+    required String otherUserId,
+    required String otherUserName,
+    required bool isGroup,
+    String? groupName,
+  }) {
+    final now = DateTime.now();
+    final sessionId = isGroup ? 'group_$requestId' : 'direct_$requestId';
+    final sessionName = isGroup
+        ? (groupName?.trim().isNotEmpty == true
+            ? groupName!.trim()
+            : 'Support Circle with $otherUserName')
+        : otherUserName;
+    final initialMessage = isGroup
+        ? 'This support circle is live. Start gently and make space for each other.'
+        : 'Your chat request was accepted. Say hello when you are ready.';
+
+    final existingIndex = _sessions.indexWhere((session) => session.id == sessionId);
+    final session = ChatSession(
+      id: sessionId,
+      type: isGroup ? 'group' : 'individual',
+      name: sessionName,
+      participantIds: [currentUserId, otherUserId],
+      lastMessage: initialMessage,
+      lastMessageTime: now,
+      unreadCount: 0,
+      isActive: true,
+      createdAt: now,
+    );
+
+    if (existingIndex == -1) {
+      _sessions.insert(0, session);
+    } else {
+      _sessions[existingIndex] = session;
+    }
+
+    _messagesBySession.putIfAbsent(sessionId, () {
+      return [
+        Message(
+          id: 'system-$requestId',
+          sessionId: sessionId,
+          senderId: isGroup ? 'group-system' : otherUserId,
+          senderName: isGroup ? 'Serenity' : otherUserName,
+          content: initialMessage,
+          timestamp: now,
+          type: isGroup ? MessageType.system : MessageType.matchNotification,
+          status: MessageStatus.delivered,
+        ),
+      ];
+    });
+
+    _sortSessions();
+    notifyListeners();
+  }
+
+  void _upsertSessionPreview({
+    required String sessionId,
+    required String lastMessage,
+    required DateTime lastMessageTime,
+    int unreadDelta = 0,
+    bool createIfMissing = false,
+  }) {
+    final sessionIndex = _sessions.indexWhere((s) => s.id == sessionId);
+    if (sessionIndex != -1) {
+      final existing = _sessions[sessionIndex];
+      _sessions[sessionIndex] = existing.copyWith(
+        lastMessage: lastMessage,
+        lastMessageTime: lastMessageTime,
+        unreadCount: (existing.unreadCount + unreadDelta).clamp(0, 9999) as int,
+      );
+      _sortSessions();
+      return;
+    }
+
+    if (!createIfMissing) return;
+
+    _sessions.insert(
+      0,
+      ChatSession(
+        id: sessionId,
+        type: 'group',
+        name: 'Conversation',
+        participantIds: const [],
+        lastMessage: lastMessage,
+        lastMessageTime: lastMessageTime,
+        unreadCount: unreadDelta.clamp(0, 9999) as int,
+        createdAt: lastMessageTime,
+      ),
+    );
+    _sortSessions();
+  }
+
+  void _sortSessions() {
+    _sessions.sort((a, b) {
+      final aTime = a.lastMessageTime ?? a.createdAt;
+      final bTime = b.lastMessageTime ?? b.createdAt;
+      return bTime.compareTo(aTime);
+    });
   }
 
   /// Clear error

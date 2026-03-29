@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+
 import '../services/api_service.dart';
+import 'chat_provider.dart';
 
 enum NotificationType { matchRequest, groupInvite, message, matchFound }
 
@@ -45,6 +47,7 @@ class NotificationItem {
 
 class NotificationProvider with ChangeNotifier {
   final ApiService _apiService;
+  ChatProvider? _chatProvider;
 
   List<NotificationItem> _notifications = [];
   bool _isLoading = false;
@@ -57,13 +60,74 @@ class NotificationProvider with ChangeNotifier {
   String? get error => _error;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
 
-  /// Add a notification (for testing or local notifications)
+  NotificationProvider bindChatProvider(ChatProvider chatProvider) {
+    _chatProvider = chatProvider;
+    return this;
+  }
+
   void addNotification(NotificationItem notification) {
     _notifications.insert(0, notification);
     notifyListeners();
   }
 
-  /// Mark notification as read
+  void addPendingMatchRequest({
+    required String requesterId,
+    required String requesterName,
+    required String targetUserId,
+    required String targetUserName,
+  }) {
+    final requestId = 'req_${DateTime.now().microsecondsSinceEpoch}';
+    addNotification(
+      NotificationItem(
+        id: requestId,
+        type: NotificationType.matchRequest,
+        title: 'Chat Request',
+        message:
+            '$requesterName wants to start a private chat with $targetUserName.',
+        timestamp: DateTime.now(),
+        isRead: false,
+        actionData: {
+          'requestId': requestId,
+          'requestType': 'direct',
+          'requesterId': requesterId,
+          'requesterName': requesterName,
+          'targetUserId': targetUserId,
+          'targetUserName': targetUserName,
+        },
+      ),
+    );
+  }
+
+  void addPendingGroupInvite({
+    required String requesterId,
+    required String requesterName,
+    required String targetUserId,
+    required String targetUserName,
+    required String groupName,
+  }) {
+    final requestId = 'req_${DateTime.now().microsecondsSinceEpoch}';
+    addNotification(
+      NotificationItem(
+        id: requestId,
+        type: NotificationType.groupInvite,
+        title: 'Group Request',
+        message:
+            '$requesterName wants to create "$groupName" with $targetUserName.',
+        timestamp: DateTime.now(),
+        isRead: false,
+        actionData: {
+          'requestId': requestId,
+          'requestType': 'group',
+          'requesterId': requesterId,
+          'requesterName': requesterName,
+          'targetUserId': targetUserId,
+          'targetUserName': targetUserName,
+          'groupName': groupName,
+        },
+      ),
+    );
+  }
+
   void markAsRead(String notificationId) {
     final index = _notifications.indexWhere((n) => n.id == notificationId);
     if (index != -1) {
@@ -72,31 +136,40 @@ class NotificationProvider with ChangeNotifier {
     }
   }
 
-  /// Mark all as read
   void markAllAsRead() {
     _notifications =
         _notifications.map((n) => n.copyWith(isRead: true)).toList();
     notifyListeners();
   }
 
-  /// Delete notification
   void deleteNotification(String notificationId) {
     _notifications.removeWhere((n) => n.id == notificationId);
     notifyListeners();
   }
 
-  /// Accept chat request
   Future<void> acceptChatRequest(String requestId) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      await _apiService.acceptChatRequest(requestId);
+      final notificationIndex = _notifications.indexWhere(
+        (n) => n.actionData?['requestId'] == requestId,
+      );
+      final notification =
+          notificationIndex == -1 ? null : _notifications[notificationIndex];
 
-      // Remove notification after accepting
-      _notifications
-          .removeWhere((n) => n.actionData?['requestId'] == requestId);
+      try {
+        await _apiService.acceptChatRequest(requestId);
+      } catch (e) {
+        debugPrint('Accept chat request API failed, keeping local flow: $e');
+      }
+
+      if (notification != null) {
+        _createSessionFromNotification(notification);
+      }
+
+      _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
     } catch (e) {
       _error = e.toString();
       debugPrint('Error accepting chat request: $e');
@@ -106,18 +179,19 @@ class NotificationProvider with ChangeNotifier {
     }
   }
 
-  /// Decline chat request
   Future<void> declineChatRequest(String requestId) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      await _apiService.declineChatRequest(requestId);
+      try {
+        await _apiService.declineChatRequest(requestId);
+      } catch (e) {
+        debugPrint('Decline chat request API failed, keeping local flow: $e');
+      }
 
-      // Remove notification after declining
-      _notifications
-          .removeWhere((n) => n.actionData?['requestId'] == requestId);
+      _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
     } catch (e) {
       _error = e.toString();
       debugPrint('Error declining chat request: $e');
@@ -127,60 +201,23 @@ class NotificationProvider with ChangeNotifier {
     }
   }
 
-  /// Clear error
   void clearError() {
     _error = null;
     notifyListeners();
   }
 
-  /// Load mock notifications (for testing)
-  void loadMockNotifications() {
-    _notifications = [
-      NotificationItem(
-        id: '1',
-        type: NotificationType.matchRequest,
-        title: 'New Match Request',
-        message: 'Anonymous Butterfly wants to connect with you',
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        isRead: false,
-        actionData: {
-          'requestId': 'req_123',
-          'userId': '123',
-          'userName': 'Anonymous Butterfly'
-        },
-      ),
-      NotificationItem(
-        id: '2',
-        type: NotificationType.groupInvite,
-        title: 'Group Invitation',
-        message: 'You\'ve been invited to join "Academic Stress Support"',
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-        isRead: false,
-        actionData: {
-          'requestId': 'req_456',
-          'groupId': '456',
-          'groupName': 'Academic Stress Support'
-        },
-      ),
-      NotificationItem(
-        id: '3',
-        type: NotificationType.message,
-        title: 'New Message',
-        message: 'Anonymous Dove sent you a message',
-        timestamp: DateTime.now().subtract(const Duration(days: 1)),
-        isRead: true,
-        actionData: {'chatId': '789'},
-      ),
-      NotificationItem(
-        id: '4',
-        type: NotificationType.matchFound,
-        title: 'Match Found!',
-        message: 'We found 3 people with similar experiences',
-        timestamp: DateTime.now().subtract(const Duration(days: 2)),
-        isRead: true,
-        actionData: {'postId': '101'},
-      ),
-    ];
-    notifyListeners();
+  void _createSessionFromNotification(NotificationItem notification) {
+    final actionData = notification.actionData;
+    if (_chatProvider == null || actionData == null) return;
+
+    _chatProvider!.createSessionFromAcceptedRequest(
+      requestId: actionData['requestId'] as String? ?? notification.id,
+      currentUserId: actionData['requesterId'] as String? ?? 'unknown',
+      otherUserId: actionData['targetUserId'] as String? ?? 'peer',
+      otherUserName:
+          actionData['targetUserName'] as String? ?? 'Anonymous Peer',
+      isGroup: notification.type == NotificationType.groupInvite,
+      groupName: actionData['groupName'] as String?,
+    );
   }
 }

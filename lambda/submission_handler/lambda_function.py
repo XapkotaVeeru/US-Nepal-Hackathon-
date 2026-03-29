@@ -38,15 +38,32 @@ class BedrockInvocationError(Exception):
         self.availability = availability or {}
 
 
+def _json_safe(value):
+    """Convert DynamoDB/NumPy values into plain JSON-safe Python types."""
+    if isinstance(value, Decimal):
+        if value % 1 == 0:
+            return int(value)
+        return float(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def lambda_handler(event, context):
     """Main handler for submission processing with synchronous matching"""
     try:
         # Log the incoming event for debugging
-        print(f"Received event: {json.dumps(event)}")
+        print(f"Received event: {json.dumps(_json_safe(event))}")
         
         # Parse request body
         body = json.loads(event.get('body', '{}'))
-        print(f"Parsed body: {json.dumps(body)}")
+        print(f"Parsed body: {json.dumps(_json_safe(body))}")
         
         # Validate input
         validation_error = validate_input(body)
@@ -281,8 +298,10 @@ def find_similar_users(user_embedding, user_anonymous_id, user_submission_id):
     try:
         # Convert to numpy array
         user_emb_array = np.array(user_embedding)
+        print(f"User embedding shape: {user_emb_array.shape}")
         
         # Query all active submissions from DynamoDB
+        print(f"Querying StatusIndex for active submissions...")
         response = table.query(
             IndexName='StatusIndex',
             KeyConditionExpression='#status = :status',
@@ -293,44 +312,61 @@ def find_similar_users(user_embedding, user_anonymous_id, user_submission_id):
         candidates = response.get('Items', [])
         print(f"Found {len(candidates)} active submissions in match pool")
         
+        # Log details about candidates
+        candidates_with_embedding = [c for c in candidates if 'embedding' in c]
+        print(f"Candidates with embeddings: {len(candidates_with_embedding)}")
+        
         matches = []
+        similarity_scores = []
         
         for candidate in candidates:
             # Skip if no embedding
             if 'embedding' not in candidate:
+                print(f"Skipping candidate {candidate.get('submissionId', 'unknown')}: no embedding")
                 continue
             
             # Skip self
             if candidate.get('anonymousId') == user_anonymous_id:
+                print(f"Skipping candidate {candidate.get('submissionId', 'unknown')}: same user")
                 continue
             
             # Skip same submission
             if candidate.get('submissionId') == user_submission_id:
+                print(f"Skipping candidate {candidate.get('submissionId', 'unknown')}: same submission")
                 continue
             
             # Skip HIGH risk users
             if candidate.get('riskLevel') == 'HIGH':
+                print(f"Skipping candidate {candidate.get('submissionId', 'unknown')}: HIGH risk")
                 continue
             
             # Calculate cosine similarity
             candidate_embedding = np.array([float(x) for x in candidate['embedding']])
             similarity = cosine_similarity(user_emb_array, candidate_embedding)
+            similarity_scores.append(similarity)
+            
+            print(f"Candidate {candidate.get('submissionId', 'unknown')}: similarity={similarity:.3f}")
             
             if similarity >= SIMILARITY_THRESHOLD:
-                # Get first 100 chars of content as preview
-                content_preview = candidate.get('content', '')[:100]
-                if len(candidate.get('content', '')) > 100:
-                    content_preview += '...'
+                # Calculate time ago
+                timestamp_str = candidate.get('timestamp', '')
+                last_active = calculate_time_ago(timestamp_str)
                 
                 matches.append({
-                    'userId': candidate.get('anonymousId'),
-                    'similarity': round(float(similarity), 2),
-                    'recentPost': content_preview,
-                    'timestamp': candidate.get('timestamp')
+                    'id': candidate.get('submissionId'),
+                    'anonymousName': f"Anonymous {generate_animal_name(candidate.get('anonymousId'))}",
+                    'similarityScore': round(float(similarity), 2),
+                    'lastActive': last_active,
+                    'commonTheme': extract_theme(candidate.get('content', ''))
                 })
         
+        # Log similarity statistics
+        if similarity_scores:
+            print(f"Similarity scores - min: {min(similarity_scores):.3f}, max: {max(similarity_scores):.3f}, avg: {sum(similarity_scores)/len(similarity_scores):.3f}")
+            print(f"Threshold: {SIMILARITY_THRESHOLD}")
+        
         # Sort by similarity (highest first) and take top 5
-        matches.sort(key=lambda x: x['similarity'], reverse=True)
+        matches.sort(key=lambda x: x['similarityScore'], reverse=True)
         top_matches = matches[:5]
         
         print(f"Returning {len(top_matches)} matches above threshold {SIMILARITY_THRESHOLD}")
@@ -367,42 +403,95 @@ def get_support_groups(risk_level, content):
     
     if 'work' in content_lower or 'job' in content_lower or 'career' in content_lower:
         groups.append({
-            'groupId': 'group-work-stress',
+            'id': 'group-work-stress',
             'name': 'Work Stress Support',
-            'description': 'Connect with others managing workplace challenges',
+            'theme': 'Connect with others managing workplace challenges',
             'memberCount': 24,
-            'category': 'Work & Career'
+            'createdAt': datetime.now(timezone.utc).isoformat()
         })
     
     if 'anxiety' in content_lower or 'anxious' in content_lower or 'worried' in content_lower:
         groups.append({
-            'groupId': 'group-anxiety',
+            'id': 'group-anxiety',
             'name': 'Anxiety Support Circle',
-            'description': 'Share coping strategies for anxiety',
+            'theme': 'Share coping strategies for anxiety',
             'memberCount': 42,
-            'category': 'Mental Health'
+            'createdAt': datetime.now(timezone.utc).isoformat()
         })
     
     if 'stress' in content_lower or 'stressed' in content_lower or 'pressure' in content_lower:
         groups.append({
-            'groupId': 'group-stress-management',
+            'id': 'group-stress-management',
             'name': 'Stress Management',
-            'description': 'Learn and share stress reduction techniques',
+            'theme': 'Learn and share stress reduction techniques',
             'memberCount': 31,
-            'category': 'Wellness'
+            'createdAt': datetime.now(timezone.utc).isoformat()
         })
     
     # Default general group if no specific matches
     if not groups:
         groups.append({
-            'groupId': 'group-general-support',
+            'id': 'group-general-support',
             'name': 'General Support',
-            'description': 'A welcoming space for all experiences',
+            'theme': 'A welcoming space for all experiences',
             'memberCount': 67,
-            'category': 'General'
+            'createdAt': datetime.now(timezone.utc).isoformat()
         })
     
     return groups[:3]  # Return max 3 groups
+
+
+def generate_animal_name(anonymous_id):
+    """Generate a consistent animal name from anonymous ID"""
+    animals = [
+        'Butterfly', 'Phoenix', 'Dove', 'Eagle', 'Owl', 'Swan', 
+        'Dolphin', 'Panda', 'Tiger', 'Lion', 'Bear', 'Wolf',
+        'Fox', 'Deer', 'Rabbit', 'Hawk', 'Falcon', 'Raven'
+    ]
+    # Use hash of ID to consistently pick same animal
+    hash_val = sum(ord(c) for c in anonymous_id)
+    return animals[hash_val % len(animals)]
+
+
+def calculate_time_ago(timestamp_str):
+    """Calculate human-readable time ago from ISO timestamp"""
+    try:
+        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        diff = now - timestamp
+        
+        if diff.days > 0:
+            return f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+        elif diff.seconds >= 3600:
+            hours = diff.seconds // 3600
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif diff.seconds >= 60:
+            minutes = diff.seconds // 60
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        else:
+            return "just now"
+    except Exception as e:
+        print(f"Error calculating time ago: {e}")
+        return "recently"
+
+
+def extract_theme(content):
+    """Extract a brief theme from content"""
+    content_lower = content.lower()
+    
+    # Check for common themes
+    if 'work' in content_lower or 'job' in content_lower:
+        return 'Work-related stress'
+    elif 'study' in content_lower or 'exam' in content_lower or 'school' in content_lower:
+        return 'Academic pressure'
+    elif 'anxiety' in content_lower or 'anxious' in content_lower:
+        return 'Anxiety and worry'
+    elif 'lonely' in content_lower or 'alone' in content_lower:
+        return 'Feeling isolated'
+    elif 'relationship' in content_lower or 'family' in content_lower:
+        return 'Relationship challenges'
+    else:
+        return 'Similar feelings'
 
 
 def invoke_bedrock_model(model_id, request_body):
@@ -534,15 +623,17 @@ def get_default_crisis_resources(region='US'):
 
 def create_response(status_code, body):
     """Create HTTP response"""
+    safe_body = _json_safe(body)
     response = {
         'statusCode': status_code,
+        'isBase64Encoded': False,
         'headers': {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Headers': 'Content-Type',
             'Access-Control-Allow-Methods': 'POST, OPTIONS'
         },
-        'body': json.dumps(body)
+        'body': json.dumps(safe_body)
     }
     print(f"Returning response: {json.dumps(response)}")
     return response

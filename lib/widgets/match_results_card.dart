@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../models/post_model.dart';
+import '../providers/app_state_provider.dart';
+import '../providers/chat_provider.dart';
+import '../providers/notification_provider.dart';
 
 class MatchResultsCard extends StatelessWidget {
   final Post post;
@@ -14,16 +19,13 @@ class MatchResultsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Show different UI based on risk level
     if (post.riskLevel == RiskLevel.high) {
       return _buildHighRiskCard(context);
-    } else {
-      return _buildMatchResultsCard(context);
     }
+    return _buildMatchResultsCard(context);
   }
 
   Widget _buildHighRiskCard(BuildContext context) {
-    // Mock crisis resources - will come from backend
     final crisisResources = [
       CrisisResource(
         name: '988 Suicide & Crisis Lifeline',
@@ -51,7 +53,7 @@ class MatchResultsCard extends StatelessWidget {
     return Card(
       color: Theme.of(context).colorScheme.errorContainer,
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -64,34 +66,31 @@ class MatchResultsCard extends StatelessWidget {
             Text(
               'We\'re Here to Help',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               'Based on what you shared, we recommend speaking with a professional. Here are immediate support resources:',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-
-            // Crisis resources
             ...crisisResources.map(
               (resource) => _buildCrisisResourceTile(context, resource),
             ),
-
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
             Text(
               'This platform is for peer support, not crisis intervention. Please reach out to professionals for immediate help.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-                fontStyle: FontStyle.italic,
-              ),
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    fontStyle: FontStyle.italic,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -156,56 +155,16 @@ class MatchResultsCard extends StatelessWidget {
   }
 
   Widget _buildMatchResultsCard(BuildContext context) {
-    // Mock similar users - will come from backend
-    final similarUsers = [
-      SimilarUser(
-        id: '1',
-        anonymousName: 'Anonymous Butterfly',
-        similarityScore: 0.89,
-        lastActive: '2 hours ago',
-        commonTheme: 'Academic pressure and stress',
-      ),
-      SimilarUser(
-        id: '2',
-        anonymousName: 'Anonymous Phoenix',
-        similarityScore: 0.85,
-        lastActive: '5 hours ago',
-        commonTheme: 'Feeling overwhelmed',
-      ),
-      SimilarUser(
-        id: '3',
-        anonymousName: 'Anonymous Dove',
-        similarityScore: 0.82,
-        lastActive: '1 day ago',
-        commonTheme: 'Study-related anxiety',
-      ),
-    ];
-
-    final supportGroups = [
-      SupportGroup(
-        id: '1',
-        name: 'Academic Stress Support',
-        memberCount: 12,
-        theme: 'Students dealing with academic pressure',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-      ),
-      SupportGroup(
-        id: '2',
-        name: 'Overwhelmed Together',
-        memberCount: 8,
-        theme: 'Managing overwhelming feelings',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      ),
-    ];
+    final similarUsers = post.similarUsers ?? [];
+    final supportGroups = post.supportGroups ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Success message
         Card(
           color: Theme.of(context).colorScheme.primaryContainer,
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(16),
             child: Column(
               children: [
                 Icon(
@@ -215,18 +174,22 @@ class MatchResultsCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'We found people dealing with similar feelings',
+                  similarUsers.isNotEmpty
+                      ? 'We found people dealing with similar feelings'
+                      : 'Your post has been shared',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Connect with others who understand what you\'re going through',
+                  similarUsers.isNotEmpty
+                      ? 'Send a request and connect when the other person accepts.'
+                      : 'We\'ll notify you when we find matches',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -234,94 +197,89 @@ class MatchResultsCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-
-        // 1-to-1 Chat Section
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '1-to-1 Chat Available',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Connect privately with someone who understands',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
-
-                // Similar users list
-                ...similarUsers.map(
-                  (user) => _buildSimilarUserTile(context, user),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Group Chat Section
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.group,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Small Group Available',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Join a supportive group with similar experiences',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
-
-                // Support groups list
-                ...supportGroups.map(
-                  (group) => _buildSupportGroupTile(context, group),
-                ),
-
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    // Create new group
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create New Group'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
+        if (similarUsers.isNotEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.person,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'People You Can Request',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    'Send a private chat request or create a small support group with them.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
+                  ...similarUsers.map(
+                    (user) => _buildSimilarUserTile(context, user),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-
-        // Action buttons
+        if (similarUsers.isNotEmpty) const SizedBox(height: 16),
+        if (supportGroups.isNotEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.group,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Small Group Available',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Join a supportive group with similar experiences',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
+                  ...supportGroups.map(
+                    (group) => _buildSupportGroupTile(context, group),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Group discovery is unchanged for now.'),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create New Group'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (supportGroups.isNotEmpty) const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
@@ -346,41 +304,63 @@ class MatchResultsCard extends StatelessWidget {
   Widget _buildSimilarUserTile(BuildContext context, SimilarUser user) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(child: Text(user.anonymousName[0])),
-        title: Text(user.anonymousName),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              user.commonTheme ?? 'Similar feelings',
-              style: const TextStyle(fontSize: 12),
+            Row(
+              children: [
+                CircleAvatar(child: Text(user.anonymousName[0])),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.anonymousName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        user.commonTheme ?? 'Similar feelings',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${(user.similarityScore * 100).toInt()}% match • ${user.lastActive ?? 'Recently active'}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            Text(
-              '${(user.similarityScore * 100).toInt()}% match • ${user.lastActive}',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.outline,
-              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _sendChatRequest(context, user),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('Chat Request'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _sendGroupRequest(context, user),
+                    icon: const Icon(Icons.group_add_outlined, size: 18),
+                    label: const Text('Create Group'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        trailing: FilledButton.tonalIcon(
-          onPressed: () {
-            // Send chat request
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Chat request sent to ${user.anonymousName}'),
-              ),
-            );
-          },
-          icon: const Icon(Icons.chat_bubble_outline, size: 18),
-          label: const Text('Chat'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-        ),
-        isThreeLine: true,
       ),
     );
   }
@@ -406,7 +386,6 @@ class MatchResultsCard extends StatelessWidget {
         ),
         trailing: FilledButton.tonalIcon(
           onPressed: () {
-            // Join group
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Request sent to join ${group.name}')),
             );
@@ -427,5 +406,80 @@ class MatchResultsCard extends StatelessWidget {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     }
+  }
+
+  Future<void> _sendChatRequest(BuildContext context, SimilarUser user) async {
+    final appState = context.read<AppStateProvider>();
+    final chatProvider = context.read<ChatProvider>();
+    final notificationProvider = context.read<NotificationProvider>();
+    final requesterId = appState.anonymousId;
+    final requesterName = appState.currentUser?.displayName ?? 'Anonymous';
+
+    if (requesterId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your anonymous profile is still loading.')),
+      );
+      return;
+    }
+
+    try {
+      await chatProvider.sendChatRequest(
+        fromUserId: requesterId,
+        toUserId: user.id,
+      );
+    } catch (_) {
+      // Keep the local request flow working even if the backend endpoint is absent.
+    }
+
+    notificationProvider.addPendingMatchRequest(
+      requesterId: requesterId,
+      requesterName: requesterName,
+      targetUserId: user.id,
+      targetUserName: user.anonymousName,
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Chat request queued for ${user.anonymousName}. Accept it from Alerts to open the chat.',
+        ),
+      ),
+    );
+  }
+
+  void _sendGroupRequest(BuildContext context, SimilarUser user) {
+    final appState = context.read<AppStateProvider>();
+    final notificationProvider = context.read<NotificationProvider>();
+    final requesterId = appState.anonymousId;
+    final requesterName = appState.currentUser?.displayName ?? 'Anonymous';
+
+    if (requesterId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your anonymous profile is still loading.')),
+      );
+      return;
+    }
+
+    final groupName =
+        user.commonTheme != null && user.commonTheme!.trim().isNotEmpty
+            ? '${user.commonTheme!} Circle'
+            : 'Shared Support Circle';
+
+    notificationProvider.addPendingGroupInvite(
+      requesterId: requesterId,
+      requesterName: requesterName,
+      targetUserId: user.id,
+      targetUserName: user.anonymousName,
+      groupName: groupName,
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Group request queued with ${user.anonymousName}. Accept it from Alerts to create the group.',
+        ),
+      ),
+    );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/post_provider.dart';
+import '../services/speech_service.dart';
 
 class CreatePostCard extends StatefulWidget {
   final String anonymousId;
@@ -19,26 +21,87 @@ class CreatePostCard extends StatefulWidget {
 class _CreatePostCardState extends State<CreatePostCard> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final SpeechService _speechService = SpeechService();
+
   bool _consentGiven = false;
   bool _showGuidelines = true;
+  bool _isListening = false;
+  String _baseTextBeforeListening = '';
+  String? _voiceError;
 
   @override
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
+    _speechService.dispose();
     super.dispose();
   }
 
   int get _characterCount => _controller.text.length;
 
-  // Lowered minimum to 20 chars for a better UX — still requires consent
   bool get _isValid =>
       _characterCount >= 20 && _characterCount <= 2000 && _consentGiven;
+
+  void _setComposerText(String text) {
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    if (widget.isSubmitting) return;
+
+    if (_isListening) {
+      await _stopVoiceInput();
+    } else {
+      await _startVoiceInput();
+    }
+  }
+
+  Future<void> _startVoiceInput() async {
+    final initialized = await _speechService.initialize();
+    if (!initialized) {
+      setState(() {
+        _voiceError = 'Speech recognition is not available on this device.';
+      });
+      return;
+    }
+
+    _baseTextBeforeListening = _controller.text.trimRight();
+    setState(() {
+      _isListening = true;
+      _voiceError = null;
+    });
+
+    await _speechService.startListening(
+      onResult: (transcript) {
+        if (!mounted) return;
+
+        final mergedText = _baseTextBeforeListening.isEmpty
+            ? transcript.trimLeft()
+            : '${_baseTextBeforeListening.trimRight()} ${transcript.trimLeft()}';
+
+        _setComposerText(mergedText.trim());
+        setState(() {});
+      },
+    );
+  }
+
+  Future<void> _stopVoiceInput() async {
+    final transcript = await _speechService.stopListening();
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+      _voiceError =
+          transcript.trim().isEmpty ? 'Could not capture speech. Try again.' : null;
+    });
+  }
 
   void _submitPost() {
     if (!_isValid || widget.isSubmitting) return;
 
-    // Unfocus the text field first so the keyboard dismisses
     _focusNode.unfocus();
 
     final postProvider = context.read<PostProvider>();
@@ -50,6 +113,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
     _controller.clear();
     setState(() {
       _consentGiven = false;
+      _voiceError = null;
     });
   }
 
@@ -59,7 +123,6 @@ class _CreatePostCardState extends State<CreatePostCard> {
 
     return Column(
       children: [
-        // Safety Guidelines
         if (_showGuidelines)
           Card(
             color: colorScheme.primaryContainer,
@@ -96,10 +159,10 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '• This is peer support, not professional therapy\n'
-                    '• Your information is anonymous and private\n'
-                    '• We match your feelings to find similar experiences\n'
-                    '• If you\'re in crisis, we\'ll show emergency resources',
+                    'This is peer support, not professional therapy.\n'
+                    'Your information is anonymous and private.\n'
+                    'We match your feelings to find similar experiences.\n'
+                    'If you are in crisis, we will show emergency resources.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: colorScheme.onPrimaryContainer,
                         ),
@@ -109,8 +172,6 @@ class _CreatePostCardState extends State<CreatePostCard> {
             ),
           ),
         const SizedBox(height: 16),
-
-        // Create Post Card
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -126,9 +187,44 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   'Share your thoughts and feelings. We\'ll help you connect with others who understand.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _isListening
+                            ? 'Listening... tap the mic again to stop.'
+                            : 'Tap the microphone to transcribe into the field.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: _isListening
+                                  ? colorScheme.primary
+                                  : colorScheme.outline,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton.filledTonal(
+                      onPressed: _toggleVoiceInput,
+                      icon: Icon(
+                        _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                      ),
+                      tooltip:
+                          _isListening ? 'Stop voice input' : 'Start voice input',
+                    ),
+                  ],
+                ),
+                if (_voiceError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _voiceError!,
+                    style: TextStyle(
+                      color: colorScheme.error,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
-
-                // Text input — uses a FocusNode for reliable keyboard handling
                 TextField(
                   controller: _controller,
                   focusNode: _focusNode,
@@ -175,8 +271,6 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 12),
-
-                // Consent checkbox
                 GestureDetector(
                   onTap: widget.isSubmitting
                       ? null
@@ -237,8 +331,6 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Submit button
                 FilledButton.icon(
                   onPressed:
                       _isValid && !widget.isSubmitting ? _submitPost : null,
@@ -253,7 +345,8 @@ class _CreatePostCardState extends State<CreatePostCard> {
                         )
                       : const Icon(Icons.send_rounded),
                   label: Text(
-                      widget.isSubmitting ? 'Analyzing...' : 'Share & Find Support'),
+                    widget.isSubmitting ? 'Analyzing...' : 'Share & Find Support',
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -261,8 +354,6 @@ class _CreatePostCardState extends State<CreatePostCard> {
                     ),
                   ),
                 ),
-
-                // Helper text when button is disabled
                 if (!_isValid && !widget.isSubmitting)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),

@@ -52,7 +52,7 @@ class ApiService {
         }
       } else {
         throw ApiException(
-          'Failed to submit post: ${response.statusCode}',
+          'Failed to submit post: ${response.statusCode} ${response.body}',
           response.statusCode,
         );
       }
