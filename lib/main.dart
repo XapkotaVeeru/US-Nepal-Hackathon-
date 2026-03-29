@@ -50,6 +50,7 @@ void main() async {
   );
   const supportMatchingService = LocalSupportMatchingService();
   const llmChatService = ResilientLlmChatService(
+    remoteAdapter: HuggingFaceSmallLlmChatAdapter(),
     fallback: LocalSupportLlmChatService(
       emotionalAnalysisService: emotionalAnalysisService,
     ),

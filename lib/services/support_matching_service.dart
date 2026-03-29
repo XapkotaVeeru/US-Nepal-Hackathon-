@@ -167,8 +167,7 @@ class LocalSupportMatchingService implements SupportMatchingService {
           ...analysis.themes,
           ...analysis.emotionalLabels.map((label) => label.toLowerCase()),
         ],
-        backendHint:
-            'Swap LocalSupportMatchingService with embeddings retrieval when Bedrock/vector search is ready.',
+        backendHint: 'Internal matching query prepared.',
         backendReady: backend != null,
       ),
       source: backend == null ? 'local-matching-fallback' : 'hybrid-matching',

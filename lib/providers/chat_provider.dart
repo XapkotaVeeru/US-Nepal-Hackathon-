@@ -273,7 +273,7 @@ class ChatProvider with ChangeNotifier {
 
     _scheduleBotReply(
       communityId: communityId,
-      communityName: communityId,
+      communityName: MockSocialData.sessionNameFor(communityId),
       content: normalized,
     );
   }

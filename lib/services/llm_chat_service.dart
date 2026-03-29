@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
 import '../models/check_in_model.dart';
 import '../models/message_model.dart';
 import 'emotional_analysis_service.dart';
@@ -194,5 +198,122 @@ class BedrockLlmChatAdapter implements LlmChatAdapter {
   Future<LlmChatReply> generateReply(LlmChatRequest request) {
     // TODO: Plug teammate Bedrock chat orchestration here.
     throw UnimplementedError('Bedrock chat adapter is not wired yet.');
+  }
+}
+
+class HuggingFaceSmallLlmChatAdapter implements LlmChatAdapter {
+  static const String _defaultEndpoint = String.fromEnvironment(
+    'HF_CHAT_ENDPOINT',
+    defaultValue:
+        'https://api-inference.huggingface.co/models/HuggingFaceTB/SmolLM2-1.7B-Instruct',
+  );
+  static const String _defaultApiToken = String.fromEnvironment(
+    'HF_API_TOKEN',
+    defaultValue: '',
+  );
+
+  final String endpoint;
+  final String apiToken;
+  final http.Client? client;
+
+  const HuggingFaceSmallLlmChatAdapter({
+    this.endpoint = _defaultEndpoint,
+    this.apiToken = _defaultApiToken,
+    this.client,
+  });
+
+  @override
+  Future<LlmChatReply> generateReply(LlmChatRequest request) async {
+    final httpClient = client ?? http.Client();
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      if (apiToken.isNotEmpty) 'Authorization': 'Bearer $apiToken',
+    };
+
+    try {
+      final response = await httpClient.post(
+        Uri.parse(endpoint),
+        headers: headers,
+        body: jsonEncode({
+          'inputs': _buildPrompt(request),
+          'parameters': {
+            'max_new_tokens': 120,
+            'temperature': 0.7,
+            'return_full_text': false,
+          },
+          'options': {'wait_for_model': true},
+        }),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError(
+          'Hugging Face chat request failed: ${response.statusCode} ${response.body}',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      final content = _extractGeneratedText(decoded).trim();
+      if (content.isEmpty) {
+        throw StateError('Hugging Face chat response was empty.');
+      }
+
+      return LlmChatReply(
+        content: _sanitizeReply(content),
+        source: 'huggingface-smollm-chat',
+        usedFallback: false,
+      );
+    } finally {
+      if (client == null) {
+        httpClient.close();
+      }
+    }
+  }
+
+  String _buildPrompt(LlmChatRequest request) {
+    final recentContext = request.recentMessages
+        .take(4)
+        .map((message) => '${message.senderName}: ${message.content}')
+        .join('\n');
+
+    return '''
+You are Serenity Guide, a warm peer-support chat assistant inside an anonymous mental-health support app.
+Keep the reply supportive, specific, and calm.
+Do not diagnose. Do not mention policies. Keep it under 3 short sentences.
+If the user sounds unsafe, encourage immediate real-world crisis help.
+
+Room: ${request.communityName}
+Recent chat:
+$recentContext
+
+User:
+${request.latestUserMessage}
+
+Assistant:
+''';
+  }
+
+  String _extractGeneratedText(dynamic decoded) {
+    if (decoded is List && decoded.isNotEmpty) {
+      final first = decoded.first;
+      if (first is Map<String, dynamic>) {
+        final generated = first['generated_text'] ?? first['summary_text'];
+        if (generated is String) return generated;
+      }
+    }
+
+    if (decoded is Map<String, dynamic>) {
+      final generated = decoded['generated_text'] ?? decoded['summary_text'];
+      if (generated is String) return generated;
+    }
+
+    throw StateError('Unsupported Hugging Face chat response shape.');
+  }
+
+  String _sanitizeReply(String raw) {
+    final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return normalized;
+
+    final sentences = normalized.split(RegExp(r'(?<=[.!?])\s+'));
+    return sentences.take(3).join(' ').trim();
   }
 }

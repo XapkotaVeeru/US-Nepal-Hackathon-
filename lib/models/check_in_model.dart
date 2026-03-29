@@ -176,7 +176,20 @@ class EmotionalAnalysisResult {
     }
   }
 
-  String get sourceLabel => usedFallback ? 'Local fallback' : source;
+  String get sourceLabel {
+    if (usedFallback) return 'Local fallback';
+
+    switch (source) {
+      case 'huggingface-embedding-analyzer':
+        return 'Hugging Face embeddings';
+      case 'hybrid-emotion-analysis':
+        return 'Hybrid analysis';
+      case 'local-heuristic-analyzer':
+        return 'Local analysis';
+      default:
+        return source;
+    }
+  }
   String get supportNeedLabel => supportNeedLevel.label;
   String get supportCategoryLabel => supportCategory.label;
   String get userCategoryLabel => userCategory.label;
