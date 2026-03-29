@@ -23,6 +23,8 @@ import 'providers/post_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/community_provider.dart';
+import 'providers/journal_provider.dart';
+import 'providers/mood_provider.dart';
 import 'widgets/help_me_now_button.dart';
 
 void main() async {
@@ -111,6 +113,12 @@ class MentalHealthSupportApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => CommunityProvider(apiService: apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => MoodProvider()..loadEntries(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => JournalProvider()..loadEntries(),
         ),
       ],
       child: MaterialApp(

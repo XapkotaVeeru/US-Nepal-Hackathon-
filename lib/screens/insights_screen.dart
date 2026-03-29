@@ -1,51 +1,85 @@
-import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../models/journal_entry_model.dart';
+import '../models/mood_entry_model.dart';
+import '../providers/journal_provider.dart';
+import '../providers/mood_provider.dart';
 
 class InsightsScreen extends StatelessWidget {
   const InsightsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Insights'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            _buildHeaderCard(context),
-            const SizedBox(height: 20),
+    return Consumer2<MoodProvider, JournalProvider>(
+      builder: (context, moodProvider, journalProvider, _) {
+        if ((moodProvider.isLoading && !moodProvider.isInitialized) ||
+            (journalProvider.isLoading && !journalProvider.isInitialized)) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-            // Activity Stats Row
-            _buildActivityStatsRow(context),
-            const SizedBox(height: 20),
+        final weeklyMoodData = _buildWeeklyMoodData(moodProvider.entries);
+        final distribution = moodProvider.moodDistribution;
+        final journalEntries = journalProvider.entries;
+        final moodEntries = moodProvider.entries;
+        final weeklyAverage = _weeklyAverageMood(weeklyMoodData);
 
-            // Weekly Mood Trends Chart
-            _buildWeeklyMoodChart(context),
-            const SizedBox(height: 20),
-
-            // Mood Distribution Pie Chart
-            _buildMoodDistributionChart(context),
-            const SizedBox(height: 20),
-
-            // Engagement Insights
-            _buildEngagementCard(context),
-            const SizedBox(height: 20),
-
-            // Wellness Streak
-            _buildWellnessStreakCard(context),
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Insights'),
+            centerTitle: true,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeaderCard(context, weeklyAverage, moodEntries.length),
+                const SizedBox(height: 20),
+                _buildActivityStatsRow(
+                  context,
+                  journalCount: journalEntries.length,
+                  moodCount: moodEntries.length,
+                  streak: moodProvider.currentStreak,
+                ),
+                const SizedBox(height: 20),
+                _buildWeeklyMoodChart(context, weeklyMoodData),
+                const SizedBox(height: 20),
+                _buildMoodDistributionChart(context, distribution),
+                const SizedBox(height: 20),
+                _buildEngagementCard(
+                  context,
+                  moodEntries: moodEntries,
+                  journalEntries: journalEntries,
+                  weeklyAverage: weeklyAverage,
+                ),
+                const SizedBox(height: 20),
+                _buildWellnessStreakCard(
+                  context,
+                  streak: moodProvider.currentStreak,
+                  weeklyMoodData: weeklyMoodData,
+                ),
+                const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildHeaderCard(BuildContext context) {
+  Widget _buildHeaderCard(
+    BuildContext context,
+    double weeklyAverage,
+    int moodCount,
+  ) {
+    final summary = moodCount == 0
+        ? 'Start checking in to unlock your emotional wellness trends'
+        : 'You logged $moodCount mood check-ins. Your weekly average is ${weeklyAverage.toStringAsFixed(1)}/5.';
+
     return Card(
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
@@ -65,17 +99,15 @@ class InsightsScreen extends StatelessWidget {
                   Text(
                     'Your Weekly Summary',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
                           fontWeight: FontWeight.bold,
                         ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Track your emotional wellness journey',
+                    summary,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
                         ),
                   ),
                 ],
@@ -87,39 +119,44 @@ class InsightsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActivityStatsRow(BuildContext context) {
+  Widget _buildActivityStatsRow(
+    BuildContext context, {
+    required int journalCount,
+    required int moodCount,
+    required int streak,
+  }) {
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
             context,
-            icon: Icons.post_add,
-            label: 'Posts',
-            value: '12',
+            icon: Icons.edit_note,
+            label: 'Journals',
+            value: '$journalCount',
             color: Theme.of(context).colorScheme.primary,
-            trend: '+3 this week',
+            trend: journalCount == 0 ? 'Start writing' : 'Saved locally',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             context,
-            icon: Icons.chat_bubble,
-            label: 'Chats',
-            value: '8',
+            icon: Icons.mood,
+            label: 'Check-ins',
+            value: '$moodCount',
             color: Theme.of(context).colorScheme.secondary,
-            trend: '+2 this week',
+            trend: moodCount == 0 ? 'No data yet' : 'Persistent history',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             context,
-            icon: Icons.group,
-            label: 'Groups',
-            value: '3',
+            icon: Icons.local_fire_department,
+            label: 'Streak',
+            value: '$streak',
             color: Theme.of(context).colorScheme.tertiary,
-            trend: '+1 this week',
+            trend: streak > 0 ? 'Days in a row' : 'Check in today',
           ),
         ),
       ],
@@ -148,15 +185,13 @@ class InsightsScreen extends StatelessWidget {
                     color: color,
                   ),
             ),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            Text(label, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 4),
             Text(
               trend,
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.green,
+                    color: color,
                     fontWeight: FontWeight.w600,
                   ),
             ),
@@ -166,17 +201,11 @@ class InsightsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildWeeklyMoodChart(BuildContext context) {
-    // Mock mood data: 1=Very Low, 2=Low, 3=Neutral, 4=Good, 5=Great
-    final weeklyMoodData = [
-      _MoodDay('Mon', 3.0),
-      _MoodDay('Tue', 4.0),
-      _MoodDay('Wed', 2.5),
-      _MoodDay('Thu', 4.5),
-      _MoodDay('Fri', 3.5),
-      _MoodDay('Sat', 4.0),
-      _MoodDay('Sun', 4.5),
-    ];
+  Widget _buildWeeklyMoodChart(
+    BuildContext context,
+    List<_MoodDayData> weeklyMoodData,
+  ) {
+    final hasData = weeklyMoodData.any((entry) => entry.mood > 0);
 
     return Card(
       child: Padding(
@@ -186,10 +215,7 @@ class InsightsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.show_chart,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Icon(Icons.show_chart, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Weekly Mood Trends',
@@ -201,7 +227,9 @@ class InsightsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Your average mood across this week',
+              hasData
+                  ? 'Your average mood across the last 7 days'
+                  : 'Log mood check-ins to populate your weekly trend',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 24),
@@ -213,20 +241,13 @@ class InsightsScreen extends StatelessWidget {
                   maxY: 5,
                   minY: 0,
                   barTouchData: BarTouchData(
-                    enabled: true,
+                    enabled: hasData,
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final moodLabels = [
-                          '',
-                          'Very Low',
-                          'Low',
-                          'Neutral',
-                          'Good',
-                          'Great',
-                        ];
+                        final moodLabels = ['', 'Very Low', 'Low', 'Neutral', 'Good', 'Great'];
                         final moodIndex = rod.toY.round().clamp(0, 5);
                         return BarTooltipItem(
-                          moodLabels[moodIndex],
+                          moodIndex == 0 ? 'No check-in' : moodLabels[moodIndex],
                           TextStyle(
                             color: Theme.of(context).colorScheme.onPrimary,
                             fontWeight: FontWeight.bold,
@@ -265,21 +286,14 @@ class InsightsScreen extends StatelessWidget {
                           final emojis = ['', '😢', '😟', '😐', '😊', '😄'];
                           final index = value.toInt();
                           if (index >= 1 && index <= 5) {
-                            return Text(
-                              emojis[index],
-                              style: const TextStyle(fontSize: 14),
-                            );
+                            return Text(emojis[index], style: const TextStyle(fontSize: 14));
                           }
                           return const SizedBox.shrink();
                         },
                       ),
                     ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   ),
                   borderData: FlBorderData(show: false),
                   gridData: FlGridData(
@@ -287,10 +301,7 @@ class InsightsScreen extends StatelessWidget {
                     drawVerticalLine: false,
                     horizontalInterval: 1,
                     getDrawingHorizontalLine: (value) => FlLine(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outlineVariant
-                          .withValues(alpha: 0.3),
+                      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
                       strokeWidth: 1,
                     ),
                   ),
@@ -328,7 +339,39 @@ class InsightsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMoodDistributionChart(BuildContext context) {
+  Widget _buildMoodDistributionChart(
+    BuildContext context,
+    Map<int, int> distribution,
+  ) {
+    final total = distribution.values.fold<int>(0, (sum, count) => sum + count);
+    final sections = <PieChartSectionData>[];
+    const labels = {
+      5: 'Great',
+      4: 'Good',
+      3: 'Neutral',
+      2: 'Low',
+      1: 'Very Low',
+    };
+
+    for (final level in [5, 4, 3, 2, 1]) {
+      final count = distribution[level] ?? 0;
+      if (count == 0) continue;
+      final percent = total == 0 ? 0 : (count / total) * 100;
+      sections.add(
+        PieChartSectionData(
+          color: _getMoodColor(level.toDouble()),
+          value: count.toDouble(),
+          title: '${percent.round()}%',
+          radius: 50,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -337,10 +380,7 @@ class InsightsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.pie_chart,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Icon(Icons.pie_chart, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Mood Distribution',
@@ -352,7 +392,9 @@ class InsightsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'How your moods break down this month',
+              total == 0
+                  ? 'Your mood distribution will appear after your first check-ins'
+                  : 'How your saved mood check-ins break down',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 20),
@@ -362,69 +404,20 @@ class InsightsScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     flex: 3,
-                    child: PieChart(
-                      PieChartData(
-                        sectionsSpace: 3,
-                        centerSpaceRadius: 40,
-                        sections: [
-                          PieChartSectionData(
-                            color: Colors.green.shade400,
-                            value: 35,
-                            title: '35%',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                    child: total == 0
+                        ? Center(
+                            child: Text(
+                              'No mood data yet',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          )
+                        : PieChart(
+                            PieChartData(
+                              sectionsSpace: 3,
+                              centerSpaceRadius: 40,
+                              sections: sections,
                             ),
                           ),
-                          PieChartSectionData(
-                            color: Colors.lightGreen.shade400,
-                            value: 25,
-                            title: '25%',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          PieChartSectionData(
-                            color: Colors.amber.shade400,
-                            value: 20,
-                            title: '20%',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          PieChartSectionData(
-                            color: Colors.orange.shade400,
-                            value: 12,
-                            title: '12%',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          PieChartSectionData(
-                            color: Colors.red.shade400,
-                            value: 8,
-                            title: '8%',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -433,15 +426,13 @@ class InsightsScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildLegendItem('Great', Colors.green.shade400),
-                        const SizedBox(height: 8),
-                        _buildLegendItem('Good', Colors.lightGreen.shade400),
-                        const SizedBox(height: 8),
-                        _buildLegendItem('Neutral', Colors.amber.shade400),
-                        const SizedBox(height: 8),
-                        _buildLegendItem('Low', Colors.orange.shade400),
-                        const SizedBox(height: 8),
-                        _buildLegendItem('Very Low', Colors.red.shade400),
+                        for (final level in [5, 4, 3, 2, 1]) ...[
+                          _buildLegendItem(
+                            '${labels[level]} (${distribution[level] ?? 0})',
+                            _getMoodColor(level.toDouble()),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                       ],
                     ),
                   ),
@@ -466,12 +457,21 @@ class InsightsScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 12)),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
       ],
     );
   }
 
-  Widget _buildEngagementCard(BuildContext context) {
+  Widget _buildEngagementCard(
+    BuildContext context, {
+    required List<MoodEntry> moodEntries,
+    required List<JournalEntry> journalEntries,
+    required double weeklyAverage,
+  }) {
+    final latestMood = moodEntries.isEmpty ? null : moodEntries.first;
+    final latestJournal = journalEntries.isEmpty ? null : journalEntries.first;
+    final journalWithPrompts = journalEntries.where((entry) => entry.prompt != null).length;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -480,10 +480,7 @@ class InsightsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.trending_up,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Icon(Icons.trending_up, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Engagement Insights',
@@ -496,30 +493,30 @@ class InsightsScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _buildInsightRow(
               context,
-              icon: Icons.access_time,
-              label: 'Most Active Time',
-              value: '8:00 PM - 10:00 PM',
+              icon: Icons.mood,
+              label: 'Latest Mood',
+              value: latestMood == null ? 'No check-in yet' : _moodLabel(latestMood.moodLevel),
             ),
             const Divider(height: 24),
             _buildInsightRow(
               context,
-              icon: Icons.calendar_today,
-              label: 'Most Active Day',
-              value: 'Thursday',
+              icon: Icons.menu_book,
+              label: 'Latest Journal',
+              value: latestJournal == null ? 'No journal yet' : _timeAgo(latestJournal.createdAt),
             ),
             const Divider(height: 24),
             _buildInsightRow(
               context,
-              icon: Icons.chat,
-              label: 'Avg. Messages/Chat',
-              value: '14 messages',
+              icon: Icons.analytics_outlined,
+              label: 'Weekly Avg Mood',
+              value: moodEntries.isEmpty ? 'No data' : '${weeklyAverage.toStringAsFixed(1)}/5',
             ),
             const Divider(height: 24),
             _buildInsightRow(
               context,
-              icon: Icons.timer,
-              label: 'Avg. Chat Duration',
-              value: '23 minutes',
+              icon: Icons.lightbulb_outline,
+              label: 'Prompt-Based Entries',
+              value: '$journalWithPrompts of ${journalEntries.length}',
             ),
           ],
         ),
@@ -538,10 +535,7 @@ class InsightsScreen extends StatelessWidget {
         Icon(icon, size: 20, color: Theme.of(context).colorScheme.outline),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
         ),
         Text(
           value,
@@ -554,7 +548,13 @@ class InsightsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildWellnessStreakCard(BuildContext context) {
+  Widget _buildWellnessStreakCard(
+    BuildContext context, {
+    required int streak,
+    required List<_MoodDayData> weeklyMoodData,
+  }) {
+    final activeDays = weeklyMoodData.where((entry) => entry.mood > 0).length;
+
     return Card(
       color: Theme.of(context).colorScheme.tertiaryContainer,
       child: Padding(
@@ -564,52 +564,49 @@ class InsightsScreen extends StatelessWidget {
             const Text('🔥', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 8),
             Text(
-              '7 Day Streak!',
+              streak == 0 ? 'Start Your Streak' : '$streak Day Streak!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color:
-                        Theme.of(context).colorScheme.onTertiaryContainer,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
                   ),
             ),
             const SizedBox(height: 4),
             Text(
-              'You\'ve been checking in every day this week. Keep it up!',
+              streak == 0
+                  ? 'Check in today to begin building consistent wellness habits.'
+                  : 'You have checked in on $activeDays of the last 7 days. Keep the rhythm going.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color:
-                        Theme.of(context).colorScheme.onTertiaryContainer,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
                   ),
             ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(7, (index) {
+              children: weeklyMoodData.map((entry) {
+                final hasEntry = entry.mood > 0;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Column(
                     children: [
                       Icon(
-                        Icons.check_circle,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onTertiaryContainer,
+                        hasEntry ? Icons.check_circle : Icons.circle_outlined,
+                        color: Theme.of(context).colorScheme.onTertiaryContainer,
                         size: 24,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
+                        entry.day.characters.first,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onTertiaryContainer,
+                          color: Theme.of(context).colorScheme.onTertiaryContainer,
                         ),
                       ),
                     ],
                   ),
                 );
-              }),
+              }).toList(),
             ),
           ],
         ),
@@ -617,18 +614,72 @@ class InsightsScreen extends StatelessWidget {
     );
   }
 
+  List<_MoodDayData> _buildWeeklyMoodData(List<MoodEntry> entries) {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return List.generate(7, (index) {
+      final day = start.add(Duration(days: index));
+      final sameDayEntries = entries.where((entry) {
+        return entry.createdAt.year == day.year &&
+            entry.createdAt.month == day.month &&
+            entry.createdAt.day == day.day;
+      }).toList();
+
+      double mood = 0;
+      if (sameDayEntries.isNotEmpty) {
+        mood = sameDayEntries
+                .map((entry) => entry.moodLevel)
+                .reduce((a, b) => a + b) /
+            sameDayEntries.length;
+      }
+
+      return _MoodDayData(labels[day.weekday - 1], mood);
+    });
+  }
+
+  double _weeklyAverageMood(List<_MoodDayData> weeklyMoodData) {
+    final values = weeklyMoodData.where((entry) => entry.mood > 0).map((entry) => entry.mood).toList();
+    if (values.isEmpty) return 0;
+    return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  String _moodLabel(int moodLevel) {
+    switch (moodLevel) {
+      case 5:
+        return 'Great';
+      case 4:
+        return 'Good';
+      case 3:
+        return 'Neutral';
+      case 2:
+        return 'Low';
+      default:
+        return 'Very Low';
+    }
+  }
+
+  String _timeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
   Color _getMoodColor(double mood) {
     if (mood >= 4.5) return Colors.green.shade500;
     if (mood >= 3.5) return Colors.lightGreen.shade500;
     if (mood >= 2.5) return Colors.amber.shade500;
     if (mood >= 1.5) return Colors.orange.shade500;
-    return Colors.red.shade500;
+    if (mood > 0) return Colors.red.shade500;
+    return Colors.grey.shade300;
   }
 }
 
-class _MoodDay {
+class _MoodDayData {
   final String day;
   final double mood;
 
-  _MoodDay(this.day, this.mood);
+  const _MoodDayData(this.day, this.mood);
 }

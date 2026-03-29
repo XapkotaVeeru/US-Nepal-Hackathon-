@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../models/mood_entry_model.dart';
+import '../providers/mood_provider.dart';
 import '../services/emotion_service.dart';
 import '../services/speech_service.dart';
 
@@ -25,13 +28,6 @@ class _MoodOption {
   const _MoodOption(this.emoji, this.label, this.color);
 }
 
-class _MoodEntry {
-  final DateTime date;
-  final int moodLevel; // 1–5
-  final String note;
-  const _MoodEntry(this.date, this.moodLevel, this.note);
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 class MoodTrackingScreen extends StatefulWidget {
   const MoodTrackingScreen({super.key});
@@ -45,7 +41,6 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
   int? _selectedMoodIndex;
   final TextEditingController _noteController = TextEditingController();
   final SpeechService _speechService = SpeechService();
-  bool _todayCheckedIn = false;
   bool _isVoiceListening = false;
   bool _isAnalyzingVoice = false;
   String _voiceTranscript = '';
@@ -59,23 +54,6 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     _MoodOption('😐', 'Neutral', Color(0xFFE8C438)),
     _MoodOption('😊', 'Good', Color(0xFF7BC67A)),
     _MoodOption('😄', 'Great', Color(0xFF52A77A)),
-  ];
-
-  final List<_MoodEntry> _moodHistory = [
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 1)), 4,
-        'Had a great chat with a peer today!'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 2)), 3,
-        'Feeling okay, just a bit stressed about exams.'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 3)), 2,
-        'Rough day. Talked to my support group though.'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 4)), 4,
-        'Exercise really helped my mood today.'),
-    _MoodEntry(
-        DateTime.now().subtract(const Duration(days: 5)), 3, ''),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 6)), 5,
-        'Best day in a while! Feeling supported.'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 7)), 4,
-        'Good conversations in group chat.'),
   ];
 
   @override
@@ -96,15 +74,30 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     super.dispose();
   }
 
-  void _submitMood() {
+  Future<void> _submitMood() async {
     if (_selectedMoodIndex == null) return;
-    setState(() {
-      _todayCheckedIn = true;
-      _moodHistory.insert(
-        0,
-        _MoodEntry(DateTime.now(), _selectedMoodIndex! + 1,
-            _noteController.text.trim()),
+
+    final success = await context.read<MoodProvider>().addEntry(
+          moodLevel: _selectedMoodIndex! + 1,
+          note: _noteController.text.trim(),
+        );
+    if (!mounted) return;
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You already checked in today.'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
+      return;
+    }
+
+    setState(() {
+      _selectedMoodIndex = null;
+      _voiceTranscript = '';
+      _voiceError = null;
+      _voiceAnalysis = null;
     });
     _checkAnim.forward(from: 0);
     _noteController.clear();
@@ -213,51 +206,78 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     return Scaffold(
       backgroundColor: isDark ? _C.darkSurface : _C.cream,
       appBar: _buildAppBar(isDark),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _CheckInCard(
-              isDark: isDark,
-              moods: _moods,
-              selectedIndex: _selectedMoodIndex,
-              noteController: _noteController,
-              checkedIn: _todayCheckedIn,
-              checkAnim: _checkAnim,
-              isVoiceListening: _isVoiceListening,
-              isAnalyzingVoice: _isAnalyzingVoice,
-              voiceTranscript: _voiceTranscript,
-              voiceError: _voiceError,
-              voiceAnalysis: _voiceAnalysis,
-              onMoodSelected: (i) =>
-                  setState(() => _selectedMoodIndex = i),
-              onVoiceCheckInStart: _startVoiceCheckIn,
-              onVoiceCheckInEnd: _stopVoiceCheckIn,
-              onSubmit: _submitMood,
-            ),
-            const SizedBox(height: 20),
-            _WeekCalendar(
-              isDark: isDark,
-              moodHistory: _moodHistory,
-              colorForLevel: _colorForLevel,
-              emojiForLevel: _emojiForLevel,
-            ),
-            const SizedBox(height: 20),
-            _SectionHeader(label: 'Recent Moods', isDark: isDark),
-            const SizedBox(height: 10),
-            ..._moodHistory.take(7).map(
-                  (e) => _HistoryTile(
-                    entry: e,
-                    isDark: isDark,
-                    color: _colorForLevel(e.moodLevel),
-                    emoji: _emojiForLevel(e.moodLevel),
-                    label: _labelForLevel(e.moodLevel),
-                    timeAgo: _timeAgo(e.date),
-                  ),
+      body: Consumer<MoodProvider>(
+        builder: (context, moodProvider, _) {
+          if (moodProvider.isLoading && !moodProvider.isInitialized) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final moodHistory = moodProvider.entries;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CheckInCard(
+                  isDark: isDark,
+                  moods: _moods,
+                  selectedIndex: _selectedMoodIndex,
+                  noteController: _noteController,
+                  checkedIn: !moodProvider.canCheckInToday,
+                  checkAnim: _checkAnim,
+                  isVoiceListening: _isVoiceListening,
+                  isAnalyzingVoice: _isAnalyzingVoice,
+                  voiceTranscript: _voiceTranscript,
+                  voiceError: _voiceError,
+                  voiceAnalysis: _voiceAnalysis,
+                  onMoodSelected: (i) =>
+                      setState(() => _selectedMoodIndex = i),
+                  onVoiceCheckInStart: _startVoiceCheckIn,
+                  onVoiceCheckInEnd: _stopVoiceCheckIn,
+                  onSubmit: _submitMood,
                 ),
-          ],
-        ),
+                const SizedBox(height: 20),
+                _WeekCalendar(
+                  isDark: isDark,
+                  moodHistory: moodHistory,
+                  colorForLevel: _colorForLevel,
+                  emojiForLevel: _emojiForLevel,
+                ),
+                const SizedBox(height: 20),
+                _SectionHeader(label: 'Recent Moods', isDark: isDark),
+                const SizedBox(height: 10),
+                if (moodHistory.isEmpty)
+                  _Card(
+                    isDark: isDark,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        'No mood check-ins yet. Log one to start tracking your pattern.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFF9AACAA)
+                              : _C.inkLight,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ...moodHistory.take(7).map(
+                        (entry) => _HistoryTile(
+                          entry: entry,
+                          isDark: isDark,
+                          color: _colorForLevel(entry.moodLevel),
+                          emoji: _emojiForLevel(entry.moodLevel),
+                          label: _labelForLevel(entry.moodLevel),
+                          timeAgo: _timeAgo(entry.createdAt),
+                        ),
+                      ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -751,7 +771,7 @@ class _ChecedInBanner extends StatelessWidget {
 // ── Week Calendar ─────────────────────────────────────────────────────────────
 class _WeekCalendar extends StatelessWidget {
   final bool isDark;
-  final List<_MoodEntry> moodHistory;
+  final List<MoodEntry> moodHistory;
   final Color Function(int) colorForLevel;
   final String Function(int) emojiForLevel;
 
@@ -810,9 +830,9 @@ class _WeekCalendar extends StatelessWidget {
               final isToday = day.day == now.day &&
                   day.month == now.month;
               final entries = moodHistory.where((e) =>
-                  e.date.day == day.day &&
-                  e.date.month == day.month &&
-                  e.date.year == day.year);
+                  e.createdAt.day == day.day &&
+                  e.createdAt.month == day.month &&
+                  e.createdAt.year == day.year);
               final hasMood = entries.isNotEmpty;
               final level =
                   hasMood ? entries.first.moodLevel : 0;
@@ -880,7 +900,7 @@ class _WeekCalendar extends StatelessWidget {
 
 // ── History Tile ──────────────────────────────────────────────────────────────
 class _HistoryTile extends StatelessWidget {
-  final _MoodEntry entry;
+  final MoodEntry entry;
   final bool isDark;
   final Color color;
   final String emoji;
