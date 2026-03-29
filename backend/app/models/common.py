@@ -28,3 +28,9 @@ class NotificationType(str, Enum):
     group_invite = "group_invite"
     message = "message"
     system = "system"
+
+
+class ChatRequestStatus(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
+    declined = "declined"

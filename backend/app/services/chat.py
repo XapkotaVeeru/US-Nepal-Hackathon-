@@ -75,8 +75,13 @@ def list_messages(session: Session, session_id: str) -> list[Message]:
 
 
 def create_message(session: Session, session_id: str, payload: MessageCreate) -> Message:
-    chat_session = get_chat_session_or_404(session, session_id)
     get_or_create_user(session, payload.sender_id, payload.sender_name)
+    chat_session = get_or_create_session(
+        session,
+        session_id=session_id,
+        owner_id=payload.sender_id,
+        name=f"Support Session {session_id}",
+    )
 
     message = Message(
         session_id=session_id,

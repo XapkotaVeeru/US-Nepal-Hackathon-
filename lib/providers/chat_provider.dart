@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/chat_request_model.dart';
 import '../models/message_model.dart';
 import '../models/session_model.dart';
 import '../services/api_service.dart';
@@ -264,18 +265,27 @@ class ChatProvider with ChangeNotifier {
             ),
           );
 
-          final botMessage = Message(
-            id: 'assistant-${DateTime.now().microsecondsSinceEpoch}',
+          final persisted = await _apiService.createSessionMessage(
             sessionId: communityId,
             senderId: 'serenity-assistant',
             senderName: 'Serenity Guide',
             content: reply.content,
-            timestamp: DateTime.now(),
             type: MessageType.assistant,
-            status: MessageStatus.delivered,
           );
 
-          _handleIncomingMessage(botMessage);
+          final botMessage = persisted ??
+              Message(
+                id: 'assistant-${DateTime.now().microsecondsSinceEpoch}',
+                sessionId: communityId,
+                senderId: 'serenity-assistant',
+                senderName: 'Serenity Guide',
+                content: reply.content,
+                timestamp: DateTime.now(),
+                type: MessageType.assistant,
+                status: MessageStatus.delivered,
+              );
+
+          _handleIncomingMessage(botMessage.copyWith(status: MessageStatus.delivered));
         } catch (e) {
           debugPrint('Error generating assistant reply: $e');
         } finally {
@@ -380,14 +390,22 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  Future<void> sendChatRequest({
+  Future<ChatRequestResult> sendChatRequest({
     required String fromUserId,
     required String toUserId,
+    String? contextSummary,
+    List<String> matchedThemes = const [],
+    String? supportCategory,
+    String? userCategory,
   }) async {
     try {
-      await _apiService.sendChatRequest(
+      return await _apiService.sendChatRequest(
         fromUserId: fromUserId,
         toUserId: toUserId,
+        contextSummary: contextSummary,
+        matchedThemes: matchedThemes,
+        supportCategory: supportCategory,
+        userCategory: userCategory,
       );
     } catch (e) {
       _error = e.toString();

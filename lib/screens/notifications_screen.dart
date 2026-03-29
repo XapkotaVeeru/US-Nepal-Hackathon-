@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/notification_model.dart';
 import '../providers/notification_provider.dart';
+import 'chat_room_screen.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
@@ -190,6 +192,8 @@ IconData _getIcon(NotificationType type) {
       return Icons.message;
     case NotificationType.matchFound:
       return Icons.check_circle;
+    case NotificationType.system:
+      return Icons.info_outline;
   }
 }
 
@@ -205,6 +209,8 @@ Color _getColor(BuildContext context, NotificationType type) {
       return scheme.tertiary;
     case NotificationType.matchFound:
       return Colors.green;
+    case NotificationType.system:
+      return scheme.primary;
   }
 }
 
@@ -219,6 +225,32 @@ String _formatTime(DateTime time) {
 }
 
 void _handleTap(BuildContext context, NotificationItem notification) {
+  final actionData = notification.actionData ?? const <String, dynamic>{};
+  final sessionId = actionData['sessionId'] ?? actionData['session_id'];
+  final communityId = actionData['communityId'] ?? actionData['community_id'];
+  final roomId = (sessionId ?? communityId)?.toString();
+
+  if (roomId != null && roomId.isNotEmpty) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatRoomScreen(
+          communityId: roomId,
+          communityName: (actionData['communityName'] ??
+                  actionData['community_name'] ??
+                  actionData['fromUserName'] ??
+                  actionData['from_user_name'] ??
+                  'Support Chat')
+              .toString(),
+          communityEmoji:
+              (actionData['communityEmoji'] ?? actionData['community_emoji'] ?? '💬')
+                  .toString(),
+        ),
+      ),
+    );
+    return;
+  }
+
   switch (notification.type) {
     case NotificationType.message:
       break;
@@ -226,6 +258,7 @@ void _handleTap(BuildContext context, NotificationItem notification) {
       break;
     case NotificationType.matchRequest:
     case NotificationType.groupInvite:
+    case NotificationType.system:
       break;
   }
 }

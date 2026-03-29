@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/check_in_model.dart';
+import '../models/notification_model.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/community_provider.dart';
+import '../providers/notification_provider.dart';
 import '../screens/chat_room_screen.dart';
 
 class MatchResultsCard extends StatelessWidget {
@@ -152,7 +154,8 @@ class MatchResultsCard extends StatelessWidget {
                     _chip(
                       context,
                       icon: Icons.favorite_outline,
-                      label: result.analysis.emotionalLabels.join(' · '),
+                      label:
+                          '${result.analysis.sentimentLabel} · ${result.analysis.emotionalLabels.join(' · ')}',
                     ),
                     _chip(
                       context,
@@ -164,8 +167,34 @@ class MatchResultsCard extends StatelessWidget {
                       context,
                       icon: Icons.bolt_rounded,
                       label:
-                          '${result.analysis.intensityLabel} intensity (${result.analysis.intensity}/5)',
+                          '${result.analysis.intensityLabel} intensity (${result.analysis.intensity}/5) · ${result.analysis.supportNeedLabel} need',
                     ),
+                    _chip(
+                      context,
+                      icon: Icons.route_outlined,
+                      label: result.analysis.supportCategoryLabel,
+                    ),
+                    _chip(
+                      context,
+                      icon: result.submission.cameFromVoice
+                          ? Icons.mic_none_rounded
+                          : Icons.keyboard_alt_outlined,
+                      label:
+                          result.submission.cameFromVoice ? 'Voice input' : 'Text input',
+                    ),
+                    if (result.analysis.hasExplicitUserCategory)
+                      _chip(
+                        context,
+                        icon: Icons.badge_outlined,
+                        label: result.analysis.userCategoryLabel,
+                      ),
+                    if (result.analysis.userCategoryEvidence?.isNotEmpty == true)
+                      _chip(
+                        context,
+                        icon: Icons.find_in_page_outlined,
+                        label:
+                            'Explicit cue: ${result.analysis.userCategoryEvidence}',
+                      ),
                     _chip(
                       context,
                       icon: Icons.memory_rounded,
@@ -237,6 +266,32 @@ class MatchResultsCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        if (result.matching.groups.isNotEmpty) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Identity-Aware Groups',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'These group routes describe the kind of support space that best fits the emotional context and any explicit identity cues.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
+                  ...result.matching.groups.map(
+                    (group) => _buildGroupTile(context, group),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -249,7 +304,9 @@ class MatchResultsCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Prepared for future similarity matching and direct support routing.',
+                  result.analysis.userCategory == UserCategory.under18
+                      ? 'Young-person routing stays careful here, so direct requests are limited in favor of moderated spaces.'
+                      : 'These people were ranked from emotion, themes, and support category fit.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 16),
@@ -273,7 +330,7 @@ class MatchResultsCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'These rooms were ranked from your emotional labels, themes, and intensity.',
+                  'These rooms were ranked from sentiment, support category, themes, and identity-aware routing.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 16),
@@ -376,7 +433,59 @@ class MatchResultsCard extends StatelessWidget {
           children: [
             Text(member.reason, style: const TextStyle(fontSize: 12)),
             Text(
-              '${(member.similarityScore * 100).toInt()}% fit • ${member.lastActive} • ${member.sharedThemes}',
+              '${(member.similarityScore * 100).toInt()}% fit • ${member.lastActive} • ${member.audienceCategory.label} • ${member.sharedThemes}',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+            if (member.safetyNote != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                member.safetyNote!,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ],
+        ),
+        trailing: FilledButton.tonalIcon(
+          onPressed: member.directRequestAllowed
+              ? () => _requestPeerChat(context, member)
+              : null,
+          icon: Icon(
+            member.directRequestAllowed
+                ? Icons.chat_bubble_outline
+                : Icons.shield_outlined,
+            size: 18,
+          ),
+          label: Text(member.directRequestAllowed ? 'Request' : 'Use groups'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  Widget _buildGroupTile(
+    BuildContext context,
+    SupportGroupRecommendation group,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.groups_2_outlined)),
+        title: Text(group.title),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(group.description, style: const TextStyle(fontSize: 12)),
+            Text(
+              '${group.identityDescriptor} • ${group.matchedThemes.join(', ')}',
               style: TextStyle(
                 fontSize: 11,
                 color: Theme.of(context).colorScheme.outline,
@@ -385,9 +494,9 @@ class MatchResultsCard extends StatelessWidget {
           ],
         ),
         trailing: FilledButton.tonalIcon(
-          onPressed: () => _requestPeerChat(context, member),
-          icon: const Icon(Icons.chat_bubble_outline, size: 18),
-          label: const Text('Request'),
+          onPressed: () => _openLinkedGroup(context, group),
+          icon: const Icon(Icons.forum_outlined, size: 18),
+          label: Text(group.actionLabel),
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
@@ -414,7 +523,7 @@ class MatchResultsCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12),
             ),
             Text(
-              '${community.memberCount} members • ${community.matchedThemes.join(', ')}',
+              '${community.memberCount} members • ${community.audienceDescriptor} • ${community.matchedThemes.join(', ')}',
               style: TextStyle(
                 fontSize: 11,
                 color: Theme.of(context).colorScheme.outline,
@@ -491,14 +600,24 @@ class MatchResultsCard extends StatelessWidget {
     if (anonymousId == null) return;
 
     try {
-      await context.read<ChatProvider>().sendChatRequest(
+      final request = await context.read<ChatProvider>().sendChatRequest(
             fromUserId: anonymousId,
             toUserId: member.id,
+            contextSummary:
+                '${result.analysis.supportCategoryLabel} route from check-in',
+            matchedThemes: result.analysis.themes,
+            supportCategory: result.analysis.supportCategory.name,
+            userCategory: result.analysis.userCategory.name,
           );
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Chat request sent to ${member.anonymousName}'),
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatRoomScreen(
+            communityId: request.sessionId,
+            communityName: member.anonymousName,
+            communityEmoji: '🤝',
+          ),
         ),
       );
     } catch (_) {
@@ -513,11 +632,23 @@ class MatchResultsCard extends StatelessWidget {
     }
   }
 
-  void _openCommunity(
+  Future<void> _openCommunity(
     BuildContext context,
     SupportCommunityRecommendation community,
-  ) {
+  ) async {
     context.read<CommunityProvider>().joinCommunity(community.id);
+    await context.read<NotificationProvider>().recordRoutingNotification(
+      type: NotificationType.groupInvite,
+      title: 'Support route opened',
+      message:
+          'You opened ${community.name} because it matches ${result.analysis.supportCategoryLabel.toLowerCase()} and ${result.analysis.userCategory.audienceDescriptor.toLowerCase()}.',
+      actionData: {
+        'communityId': community.id,
+        'communityName': community.name,
+        'communityEmoji': community.emoji,
+      },
+    );
+    if (!context.mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -528,6 +659,35 @@ class MatchResultsCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openLinkedGroup(
+    BuildContext context,
+    SupportGroupRecommendation group,
+  ) async {
+    SupportCommunityRecommendation? community;
+    for (final item in result.matching.communities) {
+      if (item.id == group.linkedCommunityId) {
+        community = item;
+        break;
+      }
+    }
+
+    final target = community ??
+        SupportCommunityRecommendation(
+          id: group.linkedCommunityId,
+          name: group.title,
+          emoji: '💬',
+          description: group.description,
+          memberCount: 0,
+          reason: group.identityDescriptor,
+          matchedThemes: group.matchedThemes,
+          supportCategory: result.analysis.supportCategory,
+          audienceCategory: result.analysis.userCategory,
+          audienceDescriptor: result.analysis.userCategory.audienceDescriptor,
+        );
+
+    await _openCommunity(context, target);
   }
 
   Future<void> _launchUrl(String url) async {

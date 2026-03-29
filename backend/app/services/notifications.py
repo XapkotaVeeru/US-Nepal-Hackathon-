@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 
 from app.models import Notification
 from app.models.common import utc_now
+from app.schemas.notification import NotificationCreate
 from app.services.users import get_user_or_404
 
 
@@ -22,6 +23,26 @@ def mark_notification_read(session: Session, notification_id: str) -> Notificati
 
     notification.is_read = True
     notification.updated_at = utc_now()
+    session.add(notification)
+    session.commit()
+    session.refresh(notification)
+    return notification
+
+
+def create_notification(
+    session: Session,
+    user_id: str,
+    payload: NotificationCreate,
+) -> Notification:
+    get_user_or_404(session, user_id)
+
+    notification = Notification(
+        user_id=user_id,
+        type=payload.type,
+        title=payload.title.strip(),
+        message=payload.message.strip(),
+        action_data=payload.action_data,
+    )
     session.add(notification)
     session.commit()
     session.refresh(notification)

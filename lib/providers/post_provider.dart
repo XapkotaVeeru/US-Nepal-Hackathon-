@@ -162,8 +162,21 @@ class PostProvider with ChangeNotifier {
             )
             .toList() ??
         const <SupportCommunityRecommendation>[];
+    final backendGroups = backendCommunities
+        .map(
+          (community) => SupportGroupRecommendation(
+            id: 'group-${community.id}',
+            title: community.name,
+            description: community.description,
+            identityDescriptor: _analysisAwareIdentity(localMatches),
+            linkedCommunityId: community.id,
+            matchedThemes: community.matchedThemes,
+          ),
+        )
+        .toList();
 
     return SupportMatchResult(
+      groups: backendGroups.isNotEmpty ? backendGroups : localMatches.groups,
       members: backendMembers.isNotEmpty ? backendMembers : localMatches.members,
       communities: backendCommunities.isNotEmpty
           ? backendCommunities
@@ -177,6 +190,16 @@ class PostProvider with ChangeNotifier {
           ? 'hybrid-backend-matching'
           : localMatches.source,
     );
+  }
+
+  String _analysisAwareIdentity(SupportMatchResult matches) {
+    if (matches.groups.isNotEmpty) {
+      return matches.groups.first.identityDescriptor;
+    }
+    if (matches.communities.isNotEmpty) {
+      return matches.communities.first.audienceDescriptor;
+    }
+    return 'Support route';
   }
 
   /// Clear current match results

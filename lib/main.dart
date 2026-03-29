@@ -146,9 +146,14 @@ class MentalHealthSupportApp extends StatelessWidget {
             return provider;
           },
         ),
-        ChangeNotifierProvider(
-          create: (_) =>
-              NotificationProvider(apiService)..loadMockNotifications(),
+        ChangeNotifierProxyProvider<AppStateProvider, NotificationProvider>(
+          create: (_) => NotificationProvider(apiService),
+          update: (_, appState, notificationProvider) {
+            final provider =
+                notificationProvider ?? NotificationProvider(apiService);
+            provider.bindUser(appState.anonymousId);
+            return provider;
+          },
         ),
         ChangeNotifierProxyProvider<AppStateProvider, CommunityProvider>(
           create: (_) => CommunityProvider(apiService: apiService),

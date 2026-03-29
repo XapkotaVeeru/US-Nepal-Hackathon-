@@ -11,6 +11,7 @@ class MicroCommunity {
   final DateTime? lastActiveAt;
   final SafetyLevel safetyLevel;
   final List<String> tags;
+  final List<String> audienceTags;
   final bool isJoined;
   final CommunityCategory category;
 
@@ -26,6 +27,7 @@ class MicroCommunity {
     this.lastActiveAt,
     this.safetyLevel = SafetyLevel.safe,
     this.tags = const [],
+    this.audienceTags = const [],
     this.isJoined = false,
     this.category = CommunityCategory.support,
   });
@@ -42,6 +44,7 @@ class MicroCommunity {
     DateTime? lastActiveAt,
     SafetyLevel? safetyLevel,
     List<String>? tags,
+    List<String>? audienceTags,
     bool? isJoined,
     CommunityCategory? category,
   }) {
@@ -57,6 +60,7 @@ class MicroCommunity {
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
       safetyLevel: safetyLevel ?? this.safetyLevel,
       tags: tags ?? this.tags,
+      audienceTags: audienceTags ?? this.audienceTags,
       isJoined: isJoined ?? this.isJoined,
       category: category ?? this.category,
     );
@@ -91,6 +95,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(minutes: 5)),
         safetyLevel: SafetyLevel.moderated,
         tags: ['anxiety', 'panic', 'coping', 'breathing'],
+        audienceTags: ['general'],
         category: CommunityCategory.support,
       ),
       MicroCommunity(
@@ -106,6 +111,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(minutes: 12)),
         safetyLevel: SafetyLevel.safe,
         tags: ['academic', 'stress', 'exams', 'students'],
+        audienceTags: ['student'],
         category: CommunityCategory.academic,
       ),
       MicroCommunity(
@@ -121,6 +127,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(hours: 1)),
         safetyLevel: SafetyLevel.moderated,
         tags: ['insomnia', 'overthinking', 'night', 'support'],
+        audienceTags: ['general'],
         category: CommunityCategory.support,
       ),
       MicroCommunity(
@@ -136,6 +143,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(hours: 3)),
         safetyLevel: SafetyLevel.safe,
         tags: ['mindfulness', 'meditation', 'morning', 'gratitude'],
+        audienceTags: ['general'],
         category: CommunityCategory.mindfulness,
       ),
       MicroCommunity(
@@ -151,6 +159,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(hours: 6)),
         safetyLevel: SafetyLevel.moderated,
         tags: ['family', 'boundaries', 'relationships', 'healing'],
+        audienceTags: ['general', 'caregiver'],
         category: CommunityCategory.support,
       ),
       MicroCommunity(
@@ -166,6 +175,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(hours: 2)),
         safetyLevel: SafetyLevel.safe,
         tags: ['first-gen', 'college', 'support', 'achievement'],
+        audienceTags: ['student'],
         category: CommunityCategory.academic,
       ),
       MicroCommunity(
@@ -181,6 +191,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(days: 1)),
         safetyLevel: SafetyLevel.moderated,
         tags: ['grief', 'loss', 'healing', 'remembrance'],
+        audienceTags: ['general'],
         category: CommunityCategory.support,
       ),
       MicroCommunity(
@@ -196,6 +207,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(minutes: 30)),
         safetyLevel: SafetyLevel.safe,
         tags: ['self-care', 'wellness', 'routine', 'health'],
+        audienceTags: ['general'],
         category: CommunityCategory.wellness,
       ),
       MicroCommunity(
@@ -211,6 +223,7 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(hours: 4)),
         safetyLevel: SafetyLevel.safe,
         tags: ['social anxiety', 'confidence', 'growth', 'practice'],
+        audienceTags: ['general', 'student'],
         category: CommunityCategory.support,
       ),
       MicroCommunity(
@@ -226,6 +239,55 @@ class MockCommunities {
         lastActiveAt: DateTime.now().subtract(const Duration(minutes: 45)),
         safetyLevel: SafetyLevel.moderated,
         tags: ['depression', 'daily', 'wins', 'support'],
+        audienceTags: ['general'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c11',
+        name: 'Working Through Burnout',
+        topic: 'Professional Burnout',
+        description:
+            'For working professionals carrying stress, fatigue, or pressure from jobs, teams, and constant expectations.',
+        emoji: '💼',
+        memberCount: 164,
+        lastMessagePreview: 'My workday ends, but my brain still feels at the office...',
+        lastMessageAuthor: 'Anonymous Heron',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 18)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['burnout', 'work', 'career', 'stress'],
+        audienceTags: ['professional'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c12',
+        name: 'Young People Support Circle',
+        topic: 'Youth Emotional Support',
+        description:
+            'A moderated room described for young people who need emotional support, school-life balance, and safer peer understanding.',
+        emoji: '🌱',
+        memberCount: 121,
+        lastMessagePreview: 'School pressure has been a lot lately, but this room feels steady.',
+        lastMessageAuthor: 'Anonymous Finch',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 22)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['youth', 'school', 'support', 'stress'],
+        audienceTags: ['under18', 'student'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c13',
+        name: 'Career Pressure Lounge',
+        topic: 'Early Career Stress',
+        description:
+            'A space for internships, first jobs, career uncertainty, and pressure to keep performing at work.',
+        emoji: '📈',
+        memberCount: 109,
+        lastMessagePreview: 'Anyone else feel like they are pretending to have it together at work?',
+        lastMessageAuthor: 'Anonymous Sparrow',
+        lastActiveAt: DateTime.now().subtract(const Duration(hours: 2)),
+        safetyLevel: SafetyLevel.safe,
+        tags: ['career', 'job', 'imposter syndrome', 'work'],
+        audienceTags: ['professional'],
         category: CommunityCategory.support,
       ),
     ];
