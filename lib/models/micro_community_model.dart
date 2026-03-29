@@ -290,17 +290,129 @@ class MockCommunities {
         audienceTags: ['professional'],
         category: CommunityCategory.support,
       ),
+      MicroCommunity(
+        id: 'c14',
+        name: 'Support Lounge',
+        topic: 'Open Peer Support',
+        description:
+            'A welcoming all-day room for people who want a quick reply, a steady listener, or a place to start before finding a more specific group.',
+        emoji: '🤝',
+        memberCount: 286,
+        lastMessagePreview: 'I just needed someone to answer back tonight.',
+        lastMessageAuthor: 'Anonymous Willow',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 4)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['support', 'peer', 'chat', 'connection'],
+        audienceTags: ['general'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c15',
+        name: 'Breakup Recovery Room',
+        topic: 'Relationships & Heartbreak',
+        description:
+            'For heartbreak, mixed feelings after a breakup, or trying to rebuild emotional balance after a relationship shift.',
+        emoji: '💔',
+        memberCount: 132,
+        lastMessagePreview: 'I keep replaying the conversation in my head...',
+        lastMessageAuthor: 'Anonymous Lark',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 26)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['breakup', 'relationships', 'heartbreak', 'healing'],
+        audienceTags: ['general'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c16',
+        name: 'Parents Under Pressure',
+        topic: 'Parenting Stress',
+        description:
+            'A support room for caregivers and parents balancing emotional strain, family demands, and not enough rest.',
+        emoji: '🧡',
+        memberCount: 94,
+        lastMessagePreview: 'I love my family, I’m just exhausted all the time.',
+        lastMessageAuthor: 'Anonymous Robin',
+        lastActiveAt: DateTime.now().subtract(const Duration(hours: 1)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['parenting', 'caregiver', 'family', 'stress'],
+        audienceTags: ['caregiver'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c17',
+        name: 'Job Search Support',
+        topic: 'Career Uncertainty',
+        description:
+            'For rejection fatigue, interview stress, career pivots, and trying to stay steady during a job search.',
+        emoji: '🧭',
+        memberCount: 118,
+        lastMessagePreview: 'I got another rejection email and it hit harder today.',
+        lastMessageAuthor: 'Anonymous Kite',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 40)),
+        safetyLevel: SafetyLevel.safe,
+        tags: ['job search', 'career', 'interview', 'uncertainty'],
+        audienceTags: ['professional'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c18',
+        name: 'Lonely but Trying',
+        topic: 'Loneliness & Connection',
+        description:
+            'A softer room for loneliness, feeling left out, and wanting connection without the pressure to perform.',
+        emoji: '🌤️',
+        memberCount: 207,
+        lastMessagePreview: 'I wanted company tonight without having to explain everything.',
+        lastMessageAuthor: 'Anonymous Fern',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 16)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['lonely', 'connection', 'support', 'gentle'],
+        audienceTags: ['general'],
+        category: CommunityCategory.support,
+      ),
+      MicroCommunity(
+        id: 'c19',
+        name: 'Sunday Reset Room',
+        topic: 'Weekly Emotional Reset',
+        description:
+            'A place to check in, reset expectations, and get through the emotional spillover that often shows up at the start or end of a week.',
+        emoji: '🗓️',
+        memberCount: 88,
+        lastMessagePreview: 'Trying to reset before tomorrow without spiraling.',
+        lastMessageAuthor: 'Anonymous Birch',
+        lastActiveAt: DateTime.now().subtract(const Duration(hours: 5)),
+        safetyLevel: SafetyLevel.safe,
+        tags: ['reset', 'routine', 'anxiety', 'support'],
+        audienceTags: ['general'],
+        category: CommunityCategory.wellness,
+      ),
+      MicroCommunity(
+        id: 'c20',
+        name: 'Late Shift Decompression',
+        topic: 'After-Work Exhaustion',
+        description:
+            'For people coming down from long shifts, emotional labor, or overstimulation after work.',
+        emoji: '🌆',
+        memberCount: 73,
+        lastMessagePreview: 'I just got off work and my brain still feels loud.',
+        lastMessageAuthor: 'Anonymous Ember',
+        lastActiveAt: DateTime.now().subtract(const Duration(minutes: 52)),
+        safetyLevel: SafetyLevel.moderated,
+        tags: ['shift', 'work', 'exhaustion', 'burnout'],
+        audienceTags: ['professional'],
+        category: CommunityCategory.support,
+      ),
     ];
   }
 
   static List<MicroCommunity> getTrending() {
     final all = getAllCommunities();
-    return [all[0], all[2], all[7], all[9]];
+    return [all[13], all[0], all[10], all[17], all[2]];
   }
 
   static List<MicroCommunity> getSuggested() {
     final all = getAllCommunities();
-    return [all[1], all[5], all[3]];
+    return [all[1], all[5], all[10], all[13], all[17]];
   }
 
   static List<MicroCommunity> getRecentlyActive() {

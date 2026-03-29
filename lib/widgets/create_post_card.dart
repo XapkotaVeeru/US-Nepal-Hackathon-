@@ -49,25 +49,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
   bool get _isValid =>
       _characterCount >= 20 && _characterCount <= 2000 && _consentGiven;
 
-  Future<void> _toggleVoiceCapture() async {
-    if (_isListening) {
-      final transcript = await _speechService.stopListening();
-      if (!mounted) return;
-      setState(() {
-        _isListening = false;
-        if (transcript.trim().isEmpty) {
-          _voiceError = 'Could not capture speech. Try again with a longer check-in.';
-        } else {
-          _voiceError = null;
-          _controller.text = transcript.trim();
-          _controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: _controller.text.length),
-          );
-        }
-      });
-      return;
-    }
-
+  Future<void> _startVoiceCapture() async {
     final initialized = await _speechService.initialize();
     if (!initialized) {
       if (!mounted) return;
@@ -95,6 +77,56 @@ class _CreatePostCardState extends State<CreatePostCard> {
         });
       },
     );
+  }
+
+  Future<void> _stopVoiceCapture() async {
+    final transcript = await _speechService.stopListening();
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      if (transcript.trim().isEmpty) {
+        _voiceError =
+            'Could not capture speech. Try again and speak at your normal pace.';
+      } else {
+        _voiceError = null;
+        _controller.text = transcript.trim();
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length),
+        );
+      }
+    });
+  }
+
+  Future<void> _stopVoiceCaptureSilently() async {
+    if (!_isListening) return;
+    await _speechService.stopListening();
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+    });
+  }
+
+  Future<void> _restartVoiceCapture() async {
+    if (_isListening) {
+      await _stopVoiceCaptureSilently();
+    }
+    if (!mounted) return;
+    setState(() {
+      _controller.clear();
+      _voiceError = null;
+    });
+    await _startVoiceCapture();
+  }
+
+  Future<void> _clearFeelingInput() async {
+    if (_isListening) {
+      await _stopVoiceCaptureSilently();
+    }
+    if (!mounted) return;
+    setState(() {
+      _controller.clear();
+      _voiceError = null;
+    });
   }
 
   void _submitPost() {
@@ -210,8 +242,13 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   onSelectionChanged: widget.isSubmitting
                       ? null
                       : (selection) {
+                          final nextMode = selection.first;
+                          if (nextMode == CheckInInputMode.text &&
+                              _isListening) {
+                            _stopVoiceCaptureSilently();
+                          }
                           setState(() {
-                            _inputMode = selection.first;
+                            _inputMode = nextMode;
                             _voiceError = null;
                           });
                         },
@@ -234,7 +271,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
                         ? 'Transcript / editable check-in'
                         : 'Text check-in',
                     hintText: _inputMode == CheckInInputMode.voice
-                        ? 'Tap the mic, speak naturally, then review what was captured here...'
+                        ? 'Press start recording, speak naturally, and watch your words appear here while we transcribe...'
                         : 'I feel overwhelmed with studies and don\'t know how to handle the pressure...',
                     hintStyle: TextStyle(
                       color: colorScheme.onSurface.withValues(alpha: 0.35),
@@ -270,6 +307,28 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
+                if (_controller.text.trim().isNotEmpty ||
+                    (_inputMode == CheckInInputMode.voice && !_isListening)) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed:
+                            widget.isSubmitting ? null : _clearFeelingInput,
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        label: const Text('Clear'),
+                      ),
+                      if (_inputMode == CheckInInputMode.voice) ...[
+                        const SizedBox(width: 6),
+                        TextButton.icon(
+                          onPressed: widget.isSubmitting ? null : _restartVoiceCapture,
+                          icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                          label: const Text('Re-record'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 GestureDetector(
                   onTap: widget.isSubmitting
@@ -425,14 +484,16 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isListening ? 'Listening...' : 'Voice check-in',
+                      _isListening ? 'Recording and transcribing...' : 'Voice check-in',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Tap the mic, speak naturally, then review the transcript before sharing.',
+                      _isListening
+                          ? 'Speak at your normal pace. We will keep translating your voice into text until you press stop.'
+                          : 'Press start recording and speak naturally. You do not need to talk fast, and you can review the transcript before sharing.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: colorScheme.outline,
                           ),
@@ -443,10 +504,59 @@ class _CreatePostCardState extends State<CreatePostCard> {
             ],
           ),
           const SizedBox(height: 14),
-          FilledButton.tonalIcon(
-            onPressed: widget.isSubmitting ? null : _toggleVoiceCapture,
-            icon: Icon(_isListening ? Icons.stop_circle_outlined : Icons.mic),
-            label: Text(_isListening ? 'Stop recording' : 'Start recording'),
+          if (_isListening) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Live transcript is on. Keep talking, pause when you need to, and press stop when you are done.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: widget.isSubmitting || _isListening
+                      ? null
+                      : _startVoiceCapture,
+                  icon: const Icon(Icons.mic),
+                  label: const Text('Start recording'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: widget.isSubmitting || !_isListening
+                      ? null
+                      : _stopVoiceCapture,
+                  icon: const Icon(Icons.stop_circle_outlined),
+                  label: const Text('Stop recording'),
+                ),
+              ),
+            ],
           ),
           if (_voiceError != null) ...[
             const SizedBox(height: 10),

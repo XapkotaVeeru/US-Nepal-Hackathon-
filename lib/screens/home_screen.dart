@@ -7,6 +7,8 @@ import '../providers/app_state_provider.dart';
 import '../providers/community_provider.dart';
 import '../providers/post_provider.dart';
 import 'chats_screen.dart';
+import 'chat_room_screen.dart';
+import 'discover_screen.dart';
 import 'journaling_screen.dart';
 import 'mood_tracking_screen.dart';
 
@@ -147,6 +149,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMoodWidget(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final periodLabel = _timePeriodLabel();
+    final moods = _timeAwareMoodOptions();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -175,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Icon(Icons.favorite, color: Colors.white, size: 22),
               const SizedBox(width: 8),
               Text(
-                'How are you today?',
+                'How are you $periodLabel?',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -185,21 +189,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'You\'re not alone. Share and connect with others who understand.',
+            _timeAwareMoodSubtitle(),
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.85),
               fontSize: 13,
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 10,
             children: [
-              _buildMoodEmoji(context, '😊', 'Great'),
-              _buildMoodEmoji(context, '🙂', 'Good'),
-              _buildMoodEmoji(context, '😐', 'Meh'),
-              _buildMoodEmoji(context, '😔', 'Low'),
-              _buildMoodEmoji(context, '😢', 'Tough'),
+              for (final mood in moods)
+                _buildMoodEmoji(
+                  context,
+                  mood.$1,
+                  mood.$2,
+                ),
             ],
           ),
         ],
@@ -248,18 +255,15 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Talk to\nSomeone',
         'color': colorScheme.primary,
         'onTap': () {
+          final provider = context.read<CommunityProvider>();
+          provider.joinCommunity('c14');
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ChatDetailScreen(
-                chat: ChatItem(
-                  id: 'new',
-                  name: 'New Conversation',
-                  lastMessage: '',
-                  timestamp: 'now',
-                  unreadCount: 0,
-                  isGroup: false,
-                ),
+              builder: (_) => const ChatRoomScreen(
+                communityId: 'c14',
+                communityName: 'Support Lounge',
+                communityEmoji: '🤝',
               ),
             ),
           );
@@ -270,11 +274,9 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Join a\nGroup',
         'color': colorScheme.tertiary,
         'onTap': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Switch to the Discover tab to find groups! 🔍'),
-              duration: Duration(seconds: 2),
-            ),
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const DiscoverScreen()),
           );
         },
       },
@@ -781,5 +783,69 @@ class _HomeScreenState extends State<HomeScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  String _timePeriodLabel() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'this morning';
+    if (hour < 17) return 'this afternoon';
+    if (hour < 21) return 'this evening';
+    return 'tonight';
+  }
+
+  String _timeAwareMoodSubtitle() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Start gently. Pick the mood that matches your energy as the day begins.';
+    }
+    if (hour < 17) {
+      return 'Midday can get loud. Check in with what is actually happening for you right now.';
+    }
+    if (hour < 21) {
+      return 'You have carried a lot today. Notice what mood is staying with you into the evening.';
+    }
+    return 'Late hours can feel heavier. Choose the mood that best matches your night right now.';
+  }
+
+  List<(String, String)> _timeAwareMoodOptions() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return const [
+        ('🌞', 'Ready'),
+        ('😊', 'Calm'),
+        ('😴', 'Sleepy'),
+        ('😬', 'Anxious'),
+        ('🤍', 'Numb'),
+        ('💪', 'Hopeful'),
+      ];
+    }
+    if (hour < 17) {
+      return const [
+        ('⚡', 'Focused'),
+        ('🙂', 'Okay'),
+        ('😵', 'Overloaded'),
+        ('😔', 'Low'),
+        ('😤', 'Frustrated'),
+        ('🫠', 'Drained'),
+      ];
+    }
+    if (hour < 21) {
+      return const [
+        ('😌', 'Relieved'),
+        ('🙂', 'Steady'),
+        ('😟', 'Worried'),
+        ('😮‍💨', 'Tired'),
+        ('🥺', 'Lonely'),
+        ('🌤️', 'Need support'),
+      ];
+    }
+    return const [
+      ('🌙', 'Quiet'),
+      ('😴', 'Exhausted'),
+      ('😣', 'Heavy'),
+      ('😰', 'Spiraling'),
+      ('💭', 'Overthinking'),
+      ('🤗', 'Need comfort'),
+    ];
   }
 }

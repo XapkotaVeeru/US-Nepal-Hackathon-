@@ -107,6 +107,7 @@ class LocalSupportLlmChatService implements LlmChatService {
   }) {
     final normalized = message.toLowerCase();
     final followUp = _followUpQuestion(analysis, normalized);
+    final nextStep = _nextStepSuggestion(analysis, normalized);
     final priorAssistantCount =
         recentMessages.where((item) => item.type == MessageType.assistant).length;
 
@@ -128,10 +129,15 @@ class LocalSupportLlmChatService implements LlmChatService {
         : 'It sounds like ${analysis.themes.take(2).join(' and ')} may be sitting underneath this.';
 
     final communityNote = priorAssistantCount == 0
-        ? ' ${communityName.isNotEmpty ? 'This room can help with that too.' : 'Others here may relate.'}'
-        : '';
+        ? ' ${communityName.isNotEmpty ? 'This room can help with that too, and people here usually answer well when you keep one concrete detail in the message.' : 'Others here may relate.'}'
+        : ' We can keep unpacking this together.';
 
-    return '$opening $themeReflection$communityNote $followUp'.trim();
+    final engagementNote = priorAssistantCount == 0
+        ? ' $nextStep'
+        : ' One next step could be this: $nextStep';
+
+    return '$opening $themeReflection$communityNote$engagementNote $followUp'
+        .trim();
   }
 
   String _followUpQuestion(
@@ -147,10 +153,41 @@ class LocalSupportLlmChatService implements LlmChatService {
     if (normalized.contains('family') || normalized.contains('relationship')) {
       return 'What part of that situation hurt the most for you?';
     }
+    if (normalized.contains('work') || normalized.contains('job')) {
+      return 'Is the heavier part the workload, the people around you, or the pressure you are putting on yourself?';
+    }
+    if (normalized.contains('lonely') || normalized.contains('alone')) {
+      return 'What feels hardest right now: being physically alone, not feeling understood, or missing one specific person?';
+    }
+    if (normalized.contains('sleep') || normalized.contains('night')) {
+      return 'Is this keeping you awake because your mind is racing, your body feels tense, or both?';
+    }
     if (analysis.intensity >= 4) {
       return 'Before we solve anything, what is the one feeling that is loudest right this second?';
     }
     return 'If you want, say a little more about what today has felt like in your body or your thoughts.';
+  }
+
+  String _nextStepSuggestion(
+    EmotionalAnalysisResult analysis,
+    String normalized,
+  ) {
+    if (analysis.supportCategory == SupportCategory.academicStress) {
+      return 'Try naming the exact assignment, exam, or deadline that feels biggest.';
+    }
+    if (analysis.supportCategory == SupportCategory.burnoutSupport) {
+      return 'You could tell the room what part of work is draining you most today.';
+    }
+    if (analysis.supportCategory == SupportCategory.youthSupport) {
+      return 'A simple check-in like "today felt heavier than I expected" is enough to start.';
+    }
+    if (normalized.contains('lonely') || normalized.contains('alone')) {
+      return 'You might start with one sentence about what kind of connection you wish you had tonight.';
+    }
+    if (analysis.intensity >= 4) {
+      return 'Keep it small: one feeling, one situation, and what you need most right now.';
+    }
+    return 'You can keep this chat moving by sharing one concrete moment from today.';
   }
 }
 

@@ -22,10 +22,30 @@ class CommunityProvider with ChangeNotifier {
   MicroCommunity? get lastAutoJoined => _lastAutoJoined;
   bool get isLoading => _isLoading;
 
-  List<MicroCommunity> get trending => MockCommunities.getTrending();
-  List<MicroCommunity> get suggested => MockCommunities.getSuggested();
-  List<MicroCommunity> get recentlyActive =>
-      MockCommunities.getRecentlyActive();
+  List<MicroCommunity> get trending {
+    final pool = _allCommunities.isEmpty ? MockCommunities.getAllCommunities() : _allCommunities;
+    return pool
+        .where((community) => community.lastActiveAt != null)
+        .toList()
+      ..sort((a, b) => (b.lastActiveAt ?? DateTime(2000))
+          .compareTo(a.lastActiveAt ?? DateTime(2000)));
+  }
+
+  List<MicroCommunity> get suggested {
+    final pool = _allCommunities.isEmpty ? MockCommunities.getAllCommunities() : _allCommunities;
+    return pool
+        .where((community) => community.safetyLevel != SafetyLevel.open)
+        .take(6)
+        .toList();
+  }
+
+  List<MicroCommunity> get recentlyActive {
+    final pool = _allCommunities.isEmpty ? MockCommunities.getAllCommunities() : _allCommunities;
+    final sorted = List<MicroCommunity>.from(pool)
+      ..sort((a, b) =>
+          (b.lastActiveAt ?? DateTime(2000)).compareTo(a.lastActiveAt ?? DateTime(2000)));
+    return sorted.take(8).toList();
+  }
 
   /// Set the anonymous user ID for API calls
   void setAnonymousId(String id) {
@@ -222,7 +242,8 @@ class CommunityProvider with ChangeNotifier {
     return _allCommunities.where((c) {
       return c.name.toLowerCase().contains(lower) ||
           c.topic.toLowerCase().contains(lower) ||
-          c.tags.any((t) => t.contains(lower));
+          c.tags.any((t) => t.contains(lower)) ||
+          c.audienceTags.any((tag) => tag.contains(lower));
     }).toList();
   }
 }

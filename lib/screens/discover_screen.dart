@@ -29,10 +29,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return Consumer<CommunityProvider>(
       builder: (context, communityProvider, _) {
         return RefreshIndicator(
-          onRefresh: () async {
-            // Mock refresh
-            await Future.delayed(const Duration(seconds: 1));
-          },
+          onRefresh: communityProvider.refresh,
           child: CustomScrollView(
             slivers: [
               // Search bar
@@ -231,6 +228,31 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 ),
                 SliverToBoxAdapter(
                   child: _buildNewCircles(context, colorScheme),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                // All communities
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _buildSectionHeader(
+                        context, 'Explore All Communities', Icons.grid_view_rounded),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final all = communityProvider.allCommunities;
+                        return MicroCommunityCard(
+                          community: all[index],
+                          onTap: () => _openPreview(context, all[index]),
+                        );
+                      },
+                      childCount: communityProvider.allCommunities.length,
+                    ),
+                  ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 80)),
               ],
