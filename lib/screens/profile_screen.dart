@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/post_provider.dart';
 import '../models/post_model.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -36,7 +37,14 @@ class ProfileScreen extends StatelessWidget {
                       Align(
                         alignment: Alignment.topRight,
                         child: IconButton(
-                          onPressed: () => _showSettingsDialog(context),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => const SettingsScreen(),
+                              ),
+                            );
+                          },
                           icon: Icon(
                             Icons.settings_outlined,
                             color: Theme.of(context).colorScheme.outline,
@@ -66,6 +74,13 @@ class ProfileScreen extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.outline,
                             ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            _showEditDisplayNameDialog(context, user.displayName),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Edit Display Name'),
                       ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
@@ -343,89 +358,69 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _showSettingsDialog(BuildContext context) {
+  void _showEditDisplayNameDialog(
+    BuildContext context,
+    String currentDisplayName,
+  ) {
+    final controller = TextEditingController(text: currentDisplayName);
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Settings'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit Display Name'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.refresh),
-              title: const Text('Start Fresh'),
-              subtitle: const Text('Get a new anonymous ID'),
-              onTap: () {
-                Navigator.pop(context);
-                _showStartFreshConfirmation(context);
-              },
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 120,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                hintText: 'Anonymous Brave Butterfly',
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('About'),
-              onTap: () {
-                Navigator.pop(context);
-                _showAboutDialog(context);
-              },
+            const SizedBox(height: 12),
+            Text(
+              'Keep it warm and anonymous so others feel safe too.',
+              style: Theme.of(dialogContext).textTheme.bodySmall,
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showStartFreshConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Start Fresh?'),
-        content: const Text(
-          'This will generate a new anonymous ID. You won\'t be able to access your current chats and data.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () async {
-              final appState = context.read<AppStateProvider>();
-              await appState.clearProfile();
-              if (context.mounted) {
-                Navigator.pop(context);
+              final nextName = controller.text.trim();
+              if (nextName.isEmpty) return;
+
+              try {
+                await context.read<AppStateProvider>().updateDisplayName(nextName);
+                if (!context.mounted) return;
+                Navigator.pop(dialogContext);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New anonymous ID generated')),
+                  const SnackBar(
+                    content: Text('Display name updated'),
+                  ),
+                );
+              } catch (_) {
+                if (!context.mounted) return;
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Could not update your display name'),
+                  ),
                 );
               }
             },
-            child: const Text('Start Fresh'),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
   }
 
-  void _showAboutDialog(BuildContext context) {
-    showAboutDialog(
-      context: context,
-      applicationName: 'Mental Health Support',
-      applicationVersion: '1.0.0',
-      applicationIcon: const Icon(Icons.favorite, size: 48),
-      children: [
-        const Text(
-          'A safe, anonymous platform for peer support and emotional wellness.',
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Remember: This is not a replacement for professional therapy. If you\'re in crisis, please contact emergency services.',
-        ),
-      ],
-    );
-  }
 }

@@ -1,20 +1,28 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../repositories/mood_repository.dart';
+import '../services/api_service.dart';
 import '../models/mood_entry_model.dart';
 
 class MoodProvider with ChangeNotifier {
-  static const _storageKey = 'mood_entries_v1';
+  MoodProvider(this._repository);
 
+  final MoodRepository _repository;
   final List<MoodEntry> _entries = [];
+
+  String? _userId;
+  String? _displayName;
   bool _isLoading = false;
   bool _isInitialized = false;
+  bool _isSyncing = false;
+  String? _syncError;
+  int _bindVersion = 0;
 
   List<MoodEntry> get entries => List.unmodifiable(_entries);
   bool get isLoading => _isLoading;
   bool get isInitialized => _isInitialized;
+  bool get isSyncing => _isSyncing;
+  String? get syncError => _syncError;
 
   MoodEntry? get todayEntry {
     final today = _startOfDay(DateTime.now());
@@ -54,7 +62,6 @@ class MoodProvider with ChangeNotifier {
 
     final today = _startOfDay(DateTime.now());
     final yesterday = today.subtract(const Duration(days: 1));
-
     if (uniqueDays.first != today && uniqueDays.first != yesterday) return 0;
 
     var streak = 1;
@@ -70,25 +77,68 @@ class MoodProvider with ChangeNotifier {
     return streak;
   }
 
-  Future<void> loadEntries() async {
-    if (_isLoading) return;
+  Future<void> bindUser({
+    required String? userId,
+    required String? displayName,
+  }) async {
+    final isSameUser =
+        _userId == userId && _displayName == displayName && _isInitialized;
+    if (isSameUser) return;
 
-    _isLoading = true;
+    final version = ++_bindVersion;
+    _userId = userId;
+    _displayName = displayName;
+    _entries.clear();
+    _syncError = null;
+    _isLoading = userId != null;
+    _isInitialized = userId == null;
+    notifyListeners();
+
+    if (userId == null) {
+      return;
+    }
+
+    final cached = await _repository.loadCachedEntries(userId);
+    if (version != _bindVersion) return;
+
+    _setEntries(cached);
+    _isLoading = false;
+    _isInitialized = true;
+    notifyListeners();
+
+    sync();
+  }
+
+  Future<void> loadEntries() async {
+    await bindUser(userId: _userId, displayName: _displayName);
+  }
+
+  Future<void> sync() async {
+    final userId = _userId;
+    final displayName = _displayName;
+    if (userId == null || displayName == null || _isSyncing) return;
+
+    _isSyncing = true;
+    _syncError = null;
     notifyListeners();
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_storageKey);
-      _entries
-        ..clear()
-        ..addAll(_decodeEntries(raw));
-      _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _isInitialized = true;
+      final remoteEntries = await _repository.syncEntries(
+        userId: userId,
+        displayName: displayName,
+      );
+      if (userId == _userId) {
+        _setEntries(remoteEntries);
+      }
     } catch (e) {
-      debugPrint('Error loading mood entries: $e');
+      if (userId == _userId) {
+        _syncError = 'Saved locally. Backend sync unavailable right now.';
+      }
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (userId == _userId) {
+        _isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -97,49 +147,74 @@ class MoodProvider with ChangeNotifier {
     required String note,
     DateTime? createdAt,
   }) async {
-    if (!canCheckInToday) return false;
+    final userId = _userId;
+    if (userId == null || !canCheckInToday) return false;
 
-    final entry = MoodEntry(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+    final localEntry = await _repository.saveLocalEntry(
+      userId: userId,
       moodLevel: moodLevel,
-      note: note.trim(),
-      createdAt: createdAt ?? DateTime.now(),
+      note: note,
+      createdAt: createdAt,
     );
 
-    _entries.insert(0, entry);
+    _entries.insert(0, localEntry);
     _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    await _persistEntries();
     notifyListeners();
+
+    final displayName = _displayName;
+    if (displayName == null) return true;
+
+    try {
+      final remoteEntry = await _repository.createRemoteEntry(
+        userId: userId,
+        displayName: displayName,
+        moodLevel: moodLevel,
+        note: note,
+      );
+      await _repository.replaceEntry(
+        userId: userId,
+        localEntryId: localEntry.id,
+        remoteEntry: remoteEntry,
+      );
+      _replaceEntry(localEntry.id, remoteEntry);
+      _syncError = null;
+      notifyListeners();
+    } catch (e) {
+      if (e is ApiException && e.statusCode == 409) {
+        await sync();
+      } else {
+        _syncError = 'Mood saved locally. Sync will retry later.';
+        notifyListeners();
+      }
+    }
+
     return true;
   }
 
   Future<void> deleteEntry(String id) async {
+    final userId = _userId;
+    if (userId == null) return;
+
     _entries.removeWhere((entry) => entry.id == id);
-    await _persistEntries();
+    await _repository.saveEntries(userId, _entries);
     notifyListeners();
   }
 
-  Future<void> _persistEntries() async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = jsonEncode(
-      _entries.map((entry) => entry.toJson()).toList(),
-    );
-    await prefs.setString(_storageKey, payload);
+  void _setEntries(List<MoodEntry> entries) {
+    _entries
+      ..clear()
+      ..addAll(entries);
+    _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
-  List<MoodEntry> _decodeEntries(String? raw) {
-    if (raw == null || raw.isEmpty) return const <MoodEntry>[];
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return const <MoodEntry>[];
-      return decoded
-          .map((item) => MoodEntry.fromJson(item as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      debugPrint('Error decoding mood entries: $e');
-      return const <MoodEntry>[];
+  void _replaceEntry(String localId, MoodEntry remoteEntry) {
+    final index = _entries.indexWhere((entry) => entry.id == localId);
+    if (index == -1) {
+      _entries.insert(0, remoteEntry);
+    } else {
+      _entries[index] = remoteEntry;
     }
+    _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   DateTime _startOfDay(DateTime date) {

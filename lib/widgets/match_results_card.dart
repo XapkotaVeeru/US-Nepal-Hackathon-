@@ -1,103 +1,80 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/post_model.dart';
+
+import '../models/check_in_model.dart';
+import '../providers/app_state_provider.dart';
+import '../providers/chat_provider.dart';
+import '../providers/community_provider.dart';
+import '../screens/chat_room_screen.dart';
 
 class MatchResultsCard extends StatelessWidget {
-  final Post post;
+  final CheckInResult result;
   final VoidCallback onCreateNewPost;
 
   const MatchResultsCard({
     super.key,
-    required this.post,
+    required this.result,
     required this.onCreateNewPost,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Show different UI based on risk level
-    if (post.riskLevel == RiskLevel.high) {
+    if (result.analysis.riskLevel == 'HIGH' &&
+        result.matching.crisisResources.isNotEmpty) {
       return _buildHighRiskCard(context);
-    } else {
-      return _buildMatchResultsCard(context);
     }
+
+    return _buildMatchResultsCard(context);
   }
 
   Widget _buildHighRiskCard(BuildContext context) {
-    // Mock crisis resources - will come from backend
-    final crisisResources = [
-      CrisisResource(
-        name: '988 Suicide & Crisis Lifeline',
-        phone: '988',
-        url: 'https://988lifeline.org',
-        description: '24/7 free and confidential support',
-        available24_7: true,
-      ),
-      CrisisResource(
-        name: 'Crisis Text Line',
-        phone: 'Text HOME to 741741',
-        url: 'https://www.crisistextline.org',
-        description: 'Text-based crisis support',
-        available24_7: true,
-      ),
-      CrisisResource(
-        name: 'NAMI Helpline',
-        phone: '1-800-950-6264',
-        url: 'https://www.nami.org/help',
-        description: 'Mental health information and support',
-        available24_7: false,
-      ),
-    ];
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
-      color: Theme.of(context).colorScheme.errorContainer,
+      color: colorScheme.errorContainer,
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Icon(
-              Icons.health_and_safety,
+              Icons.health_and_safety_outlined,
               size: 48,
-              color: Theme.of(context).colorScheme.onErrorContainer,
+              color: colorScheme.onErrorContainer,
             ),
             const SizedBox(height: 16),
             Text(
-              'We\'re Here to Help',
+              'Immediate Support First',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
+                    color: colorScheme.onErrorContainer,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Based on what you shared, we recommend speaking with a professional. Here are immediate support resources:',
+              'Your check-in may reflect strong distress. We\'re prioritizing crisis support before peer matching.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
+                    color: colorScheme.onErrorContainer,
+                  ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-
-            // Crisis resources
-            ...crisisResources.map(
+            const SizedBox(height: 16),
+            ...result.matching.crisisResources.map(
               (resource) => _buildCrisisResourceTile(context, resource),
             ),
-
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              'This platform is for peer support, not crisis intervention. Please reach out to professionals for immediate help.',
+              result.analysis.summary,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-                fontStyle: FontStyle.italic,
-              ),
+                    color: colorScheme.onErrorContainer,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: onCreateNewPost,
-              child: const Text('Create New Post'),
+              child: const Text('Start a New Check-In'),
             ),
           ],
         ),
@@ -105,9 +82,362 @@ class MatchResultsCard extends StatelessWidget {
     );
   }
 
+  Widget _buildMatchResultsCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          color: colorScheme.primaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Icon(
+                  result.submission.cameFromVoice
+                      ? Icons.graphic_eq_rounded
+                      : Icons.auto_awesome_rounded,
+                  size: 44,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'We turned your check-in into a support map',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  result.analysis.summary,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+                if (result.backendMessage?.isNotEmpty == true) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    result.backendMessage!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onPrimaryContainer,
+                          fontStyle: FontStyle.italic,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Emotional Analysis',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _chip(
+                      context,
+                      icon: Icons.favorite_outline,
+                      label: result.analysis.emotionalLabels.join(' · '),
+                    ),
+                    _chip(
+                      context,
+                      icon: Icons.show_chart_rounded,
+                      label:
+                          '${result.analysis.moodDirectionLabel} ${result.analysis.sentimentScore.toStringAsFixed(2)}',
+                    ),
+                    _chip(
+                      context,
+                      icon: Icons.bolt_rounded,
+                      label:
+                          '${result.analysis.intensityLabel} intensity (${result.analysis.intensity}/5)',
+                    ),
+                    _chip(
+                      context,
+                      icon: Icons.memory_rounded,
+                      label: result.analysis.sourceLabel,
+                    ),
+                  ],
+                ),
+                if (result.analysis.themes.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Themes: ${result.analysis.themes.join(', ')}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.outline,
+                        ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Support Recommendations',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                ...result.matching.recommendations.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.check_circle_outline,
+                          size: 18,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.description,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Relevant Members',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Prepared for future similarity matching and direct support routing.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 16),
+                ...result.matching.members.map(
+                  (member) => _buildMemberTile(context, member),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Relevant Communities',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'These rooms were ranked from your emotional labels, themes, and intensity.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 16),
+                ...result.matching.communities.map(
+                  (community) => _buildCommunityTile(context, community),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Embeddings Readiness',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  result.matching.retrievalPlan.backendHint,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Query seed: ${result.matching.retrievalPlan.queryText}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Tags: ${result.matching.retrievalPlan.tags.join(', ')}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.outline,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: onCreateNewPost,
+                child: const Text('New Check-In'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: colorScheme.primary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMemberTile(
+    BuildContext context,
+    SupportMemberRecommendation member,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(child: Text(member.anonymousName[0])),
+        title: Text(member.anonymousName),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(member.reason, style: const TextStyle(fontSize: 12)),
+            Text(
+              '${(member.similarityScore * 100).toInt()}% fit • ${member.lastActive} • ${member.sharedThemes}',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+          ],
+        ),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => _requestPeerChat(context, member),
+          icon: const Icon(Icons.chat_bubble_outline, size: 18),
+          label: const Text('Request'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  Widget _buildCommunityTile(
+    BuildContext context,
+    SupportCommunityRecommendation community,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(child: Text(community.emoji)),
+        title: Text(community.name),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              community.reason,
+              style: const TextStyle(fontSize: 12),
+            ),
+            Text(
+              '${community.memberCount} members • ${community.matchedThemes.join(', ')}',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+          ],
+        ),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => _openCommunity(context, community),
+          icon: const Icon(Icons.forum_outlined, size: 18),
+          label: const Text('Open'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
   Widget _buildCrisisResourceTile(
     BuildContext context,
-    CrisisResource resource,
+    dynamic resource,
   ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -141,12 +471,10 @@ class MatchResultsCard extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.open_in_new),
                 onPressed: () => _launchUrl(resource.url!),
-                tooltip: 'Visit website',
               ),
             IconButton(
               icon: const Icon(Icons.phone),
               onPressed: () => _launchUrl('tel:${resource.phone}'),
-              tooltip: 'Call now',
             ),
           ],
         ),
@@ -155,269 +483,49 @@ class MatchResultsCard extends StatelessWidget {
     );
   }
 
-  Widget _buildMatchResultsCard(BuildContext context) {
-    // Mock similar users - will come from backend
-    final similarUsers = [
-      SimilarUser(
-        id: '1',
-        anonymousName: 'Anonymous Butterfly',
-        similarityScore: 0.89,
-        lastActive: '2 hours ago',
-        commonTheme: 'Academic pressure and stress',
-      ),
-      SimilarUser(
-        id: '2',
-        anonymousName: 'Anonymous Phoenix',
-        similarityScore: 0.85,
-        lastActive: '5 hours ago',
-        commonTheme: 'Feeling overwhelmed',
-      ),
-      SimilarUser(
-        id: '3',
-        anonymousName: 'Anonymous Dove',
-        similarityScore: 0.82,
-        lastActive: '1 day ago',
-        commonTheme: 'Study-related anxiety',
-      ),
-    ];
+  Future<void> _requestPeerChat(
+    BuildContext context,
+    SupportMemberRecommendation member,
+  ) async {
+    final anonymousId = context.read<AppStateProvider>().anonymousId;
+    if (anonymousId == null) return;
 
-    final supportGroups = [
-      SupportGroup(
-        id: '1',
-        name: 'Academic Stress Support',
-        memberCount: 12,
-        theme: 'Students dealing with academic pressure',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-      ),
-      SupportGroup(
-        id: '2',
-        name: 'Overwhelmed Together',
-        memberCount: 8,
-        theme: 'Managing overwhelming feelings',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      ),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Success message
-        Card(
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.check_circle_outline,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'We found people dealing with similar feelings',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Connect with others who understand what you\'re going through',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+    try {
+      await context.read<ChatProvider>().sendChatRequest(
+            fromUserId: anonymousId,
+            toUserId: member.id,
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Chat request sent to ${member.anonymousName}'),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Direct peer chat routing is not live yet, but this recommendation is ready for the future matching backend.',
           ),
         ),
-        const SizedBox(height: 16),
-
-        // 1-to-1 Chat Section
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '1-to-1 Chat Available',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Connect privately with someone who understands',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
-
-                // Similar users list
-                ...similarUsers.map(
-                  (user) => _buildSimilarUserTile(context, user),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Group Chat Section
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.group,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Small Group Available',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Join a supportive group with similar experiences',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
-
-                // Support groups list
-                ...supportGroups.map(
-                  (group) => _buildSupportGroupTile(context, group),
-                ),
-
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    // Create new group
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create New Group'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Action buttons
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: onCreateNewPost,
-                child: const Text('Not Now'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: onCreateNewPost,
-                child: const Text('New Post'),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+      );
+    }
   }
 
-  Widget _buildSimilarUserTile(BuildContext context, SimilarUser user) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(child: Text(user.anonymousName[0])),
-        title: Text(user.anonymousName),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              user.commonTheme ?? 'Similar feelings',
-              style: const TextStyle(fontSize: 12),
-            ),
-            Text(
-              '${(user.similarityScore * 100).toInt()}% match • ${user.lastActive}',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-          ],
+  void _openCommunity(
+    BuildContext context,
+    SupportCommunityRecommendation community,
+  ) {
+    context.read<CommunityProvider>().joinCommunity(community.id);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatRoomScreen(
+          communityId: community.id,
+          communityName: community.name,
+          communityEmoji: community.emoji,
         ),
-        trailing: FilledButton.tonalIcon(
-          onPressed: () {
-            // Send chat request
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Chat request sent to ${user.anonymousName}'),
-              ),
-            );
-          },
-          icon: const Icon(Icons.chat_bubble_outline, size: 18),
-          label: const Text('Chat'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-        ),
-        isThreeLine: true,
-      ),
-    );
-  }
-
-  Widget _buildSupportGroupTile(BuildContext context, SupportGroup group) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(child: Text('${group.memberCount}')),
-        title: Text(group.name),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(group.theme, style: const TextStyle(fontSize: 12)),
-            Text(
-              '${group.memberCount} members',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-          ],
-        ),
-        trailing: FilledButton.tonalIcon(
-          onPressed: () {
-            // Join group
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Request sent to join ${group.name}')),
-            );
-          },
-          icon: const Icon(Icons.group_add, size: 18),
-          label: const Text('Join'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-        ),
-        isThreeLine: true,
       ),
     );
   }

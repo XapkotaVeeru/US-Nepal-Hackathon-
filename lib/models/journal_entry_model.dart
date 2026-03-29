@@ -14,13 +14,15 @@ class JournalEntry {
   });
 
   factory JournalEntry.fromJson(Map<String, dynamic> json) {
+    final createdAtValue = json['createdAt'] ?? json['created_at'];
+
     return JournalEntry(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
       content: json['content'] as String? ?? '',
       prompt: json['prompt'] as String?,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+      createdAt: createdAtValue != null
+          ? DateTime.tryParse(createdAtValue.toString()) ?? DateTime.now()
           : DateTime.now(),
     );
   }

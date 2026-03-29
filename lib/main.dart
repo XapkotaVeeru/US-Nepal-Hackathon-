@@ -16,6 +16,9 @@ import 'screens/about_screen.dart';
 
 import 'services/anonymous_id_service.dart';
 import 'services/api_service.dart';
+import 'services/emotional_analysis_service.dart';
+import 'services/llm_chat_service.dart';
+import 'services/support_matching_service.dart';
 import 'config/backend_config.dart';
 
 import 'providers/app_state_provider.dart';
@@ -25,6 +28,8 @@ import 'providers/notification_provider.dart';
 import 'providers/community_provider.dart';
 import 'providers/journal_provider.dart';
 import 'providers/mood_provider.dart';
+import 'repositories/journal_repository.dart';
+import 'repositories/mood_repository.dart';
 import 'widgets/help_me_now_button.dart';
 
 void main() async {
@@ -37,13 +42,28 @@ void main() async {
 
   final anonymousIdService = await AnonymousIdService.create();
 
-  const apiBaseUrl =
-      'https://x0dge4fjri.execute-api.us-east-1.amazonaws.com/prod';
+  const apiBaseUrl = BackendConfig.defaultApiBaseUrl;
   final apiService = ApiService(baseUrl: apiBaseUrl);
+  const emotionalAnalysisService = ResilientEmotionalAnalysisService(
+    fallback: LocalEmotionalAnalysisService(),
+  );
+  const supportMatchingService = LocalSupportMatchingService();
+  const llmChatService = ResilientLlmChatService(
+    fallback: LocalSupportLlmChatService(
+      emotionalAnalysisService: emotionalAnalysisService,
+    ),
+  );
+  final moodRepository = MoodRepository(apiService);
+  final journalRepository = JournalRepository(apiService);
 
   runApp(MentalHealthSupportApp(
     anonymousIdService: anonymousIdService,
     apiService: apiService,
+    emotionalAnalysisService: emotionalAnalysisService,
+    supportMatchingService: supportMatchingService,
+    llmChatService: llmChatService,
+    moodRepository: moodRepository,
+    journalRepository: journalRepository,
   ));
 }
 
@@ -76,11 +96,21 @@ class AppColors {
 class MentalHealthSupportApp extends StatelessWidget {
   final AnonymousIdService anonymousIdService;
   final ApiService apiService;
+  final EmotionalAnalysisService emotionalAnalysisService;
+  final SupportMatchingService supportMatchingService;
+  final LlmChatService llmChatService;
+  final MoodRepository moodRepository;
+  final JournalRepository journalRepository;
 
   const MentalHealthSupportApp({
     super.key,
     required this.anonymousIdService,
     required this.apiService,
+    required this.emotionalAnalysisService,
+    required this.supportMatchingService,
+    required this.llmChatService,
+    required this.moodRepository,
+    required this.journalRepository,
   });
 
   @override
@@ -88,38 +118,72 @@ class MentalHealthSupportApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => AppStateProvider(anonymousIdService)..initialize(),
+          create: (_) =>
+              AppStateProvider(anonymousIdService, apiService)..initialize(),
         ),
-        ChangeNotifierProvider(create: (_) => PostProvider(apiService)),
         ChangeNotifierProvider(
-          create: (ctx) {
-            final chatProvider = ChatProvider(apiService);
-            // Initialize WebSocket after a frame to let AppState load first
-            Future.microtask(() {
-              final appState = ctx.read<AppStateProvider>();
-              final userId = appState.anonymousId;
-              if (userId != null) {
-                chatProvider.initializeWebSocket(
-                  BackendConfig.websocketUrl,
-                  userId,
+          create: (_) => PostProvider(
+            apiService: apiService,
+            emotionalAnalysisService: emotionalAnalysisService,
+            supportMatchingService: supportMatchingService,
+          ),
+        ),
+        ChangeNotifierProxyProvider<AppStateProvider, ChatProvider>(
+          create: (_) => ChatProvider(
+            apiService: apiService,
+            llmChatService: llmChatService,
+          ),
+          update: (_, appState, chatProvider) {
+            final provider = chatProvider ??
+                ChatProvider(
+                  apiService: apiService,
+                  llmChatService: llmChatService,
                 );
-              }
-            });
-            return chatProvider;
+            provider.bindAnonymousUser(
+              anonymousId: appState.anonymousId,
+              wsUrl: BackendConfig.websocketUrlFor(apiService.baseUrl),
+            );
+            return provider;
           },
         ),
         ChangeNotifierProvider(
           create: (_) =>
               NotificationProvider(apiService)..loadMockNotifications(),
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<AppStateProvider, CommunityProvider>(
           create: (_) => CommunityProvider(apiService: apiService),
+          update: (_, appState, communityProvider) {
+            final provider =
+                communityProvider ?? CommunityProvider(apiService: apiService);
+            final userId = appState.anonymousId;
+            if (userId != null) {
+              provider.setAnonymousId(userId);
+            }
+            return provider;
+          },
         ),
-        ChangeNotifierProvider(
-          create: (_) => MoodProvider()..loadEntries(),
+        ChangeNotifierProxyProvider<AppStateProvider, MoodProvider>(
+          create: (_) => MoodProvider(moodRepository),
+          update: (_, appState, moodProvider) {
+            final provider = moodProvider ?? MoodProvider(moodRepository);
+            provider.bindUser(
+              userId: appState.anonymousId,
+              displayName: appState.currentUser?.displayName,
+            );
+            return provider;
+          },
         ),
-        ChangeNotifierProvider(
-          create: (_) => JournalProvider()..loadEntries(),
+        ChangeNotifierProxyProvider<AppStateProvider, JournalProvider>(
+          create: (_) => JournalProvider(journalRepository),
+          update: (_, appState, journalProvider) {
+            final provider =
+                journalProvider ?? JournalProvider(journalRepository);
+            provider.bindUser(
+              userId: appState.anonymousId,
+              displayName: appState.currentUser?.displayName,
+            );
+            return provider;
+          },
         ),
       ],
       child: MaterialApp(

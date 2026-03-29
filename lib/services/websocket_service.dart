@@ -1,10 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
 import '../models/message_model.dart';
 
-enum ConnectionState { disconnected, connecting, connected, reconnecting }
+enum ConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+  failed,
+}
 
 class WebSocketService {
   final String wsUrl;
@@ -12,6 +20,7 @@ class WebSocketService {
 
   WebSocketChannel? _channel;
   ConnectionState _state = ConnectionState.disconnected;
+  bool _shouldReconnect = true;
 
   final _messageController = StreamController<Message>.broadcast();
   final _stateController = StreamController<ConnectionState>.broadcast();
@@ -21,8 +30,8 @@ class WebSocketService {
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   int _reconnectAttempts = 0;
-  static const int _maxReconnectAttempts = 10;
-  static const Duration _reconnectDelay = Duration(seconds: 3);
+  static const int _maxReconnectAttempts = 6;
+  static const Duration _reconnectDelay = Duration(seconds: 2);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
   WebSocketService({
@@ -35,29 +44,35 @@ class WebSocketService {
   Stream<Map<String, dynamic>> get rawEvents => _rawEventController.stream;
   ConnectionState get currentState => _state;
 
-  /// Connect to the backend WebSocket
   Future<void> connect() async {
     if (_state == ConnectionState.connected ||
         _state == ConnectionState.connecting) {
       return;
     }
 
-    _updateState(ConnectionState.connecting);
+    _shouldReconnect = true;
+    _updateState(
+      _reconnectAttempts > 0
+          ? ConnectionState.reconnecting
+          : ConnectionState.connecting,
+    );
 
     try {
-      final uri = Uri.parse('$wsUrl?anonymousId=$anonymousId');
+      final base = Uri.parse(wsUrl);
+      final uri = base.replace(
+        queryParameters: {
+          ...base.queryParameters,
+          'anonymousId': anonymousId,
+        },
+      );
       debugPrint('WebSocket connecting to: $uri');
       _channel = WebSocketChannel.connect(uri);
 
       await _channel!.ready;
       _updateState(ConnectionState.connected);
       _reconnectAttempts = 0;
-      debugPrint('WebSocket connected successfully');
-
-      // Start heartbeat to keep connection alive
       _startHeartbeat();
 
-      // Listen to messages
       _channel!.stream.listen(
         _handleMessage,
         onError: _handleError,
@@ -70,75 +85,66 @@ class WebSocketService {
     }
   }
 
-  /// Send a chat message via WebSocket
-  /// Matches backend route: "sendMessage"
   void sendMessage({
     required String communityId,
     required String content,
+    String? senderName,
   }) {
     if (_state != ConnectionState.connected) {
       debugPrint('WebSocket not connected, cannot send message');
       return;
     }
 
-    final payload = {
-      'action': 'sendMessage',
-      'communityId': communityId,
-      'content': content,
-      'senderId': anonymousId,
-      'timestamp': DateTime.now().toIso8601String(),
-    };
-
-    _channel?.sink.add(jsonEncode(payload));
-    debugPrint('WS → sendMessage to $communityId');
+    _channel?.sink.add(
+      jsonEncode({
+        'action': 'sendMessage',
+        'communityId': communityId,
+        'content': content,
+        'senderId': anonymousId,
+        'senderName': senderName ?? 'Anonymous',
+        'timestamp': DateTime.now().toIso8601String(),
+      }),
+    );
   }
 
-  /// Join a community channel via WebSocket
-  /// Matches backend route: "joinCommunity"
   void joinCommunity(String communityId) {
     if (_state != ConnectionState.connected) {
       debugPrint('WebSocket not connected, cannot join community');
       return;
     }
 
-    final payload = {
-      'action': 'joinCommunity',
-      'communityId': communityId,
-      'userId': anonymousId,
-    };
-
-    _channel?.sink.add(jsonEncode(payload));
-    debugPrint('WS → joinCommunity: $communityId');
+    _channel?.sink.add(
+      jsonEncode({
+        'action': 'joinCommunity',
+        'communityId': communityId,
+        'userId': anonymousId,
+      }),
+    );
   }
 
-  /// Leave a community channel
   void leaveCommunity(String communityId) {
     if (_state != ConnectionState.connected) return;
 
-    final payload = {
-      'action': 'leaveCommunity',
-      'communityId': communityId,
-      'userId': anonymousId,
-    };
-
-    _channel?.sink.add(jsonEncode(payload));
-    debugPrint('WS → leaveCommunity: $communityId');
+    _channel?.sink.add(
+      jsonEncode({
+        'action': 'leaveCommunity',
+        'communityId': communityId,
+        'userId': anonymousId,
+      }),
+    );
   }
 
-  /// Send a raw action (for extensibility)
   void sendAction(String action, Map<String, dynamic> data) {
     if (_state != ConnectionState.connected) return;
 
-    final payload = {
-      'action': action,
-      ...data,
-      'senderId': anonymousId,
-    };
-
-    _channel?.sink.add(jsonEncode(payload));
+    _channel?.sink.add(
+      jsonEncode({
+        'action': action,
+        ...data,
+        'senderId': anonymousId,
+      }),
+    );
   }
-
-  // ── Legacy API (for backward compat with ChatProvider) ──
 
   @Deprecated('Use sendMessage with communityId instead')
   void sendSessionMessage({
@@ -158,23 +164,16 @@ class WebSocketService {
     leaveCommunity(sessionId);
   }
 
-  // ═══════════════════════════════════════════════
-  //  Internal handlers
-  // ═══════════════════════════════════════════════
-
   void _handleMessage(dynamic data) {
     try {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
-      debugPrint('WS ← ${json['type'] ?? json['action'] ?? 'unknown'}');
-
-      // Forward raw events
       _rawEventController.add(json);
 
-      // Parse as Message if applicable
       if (json['type'] == 'message' || json['action'] == 'newMessage') {
         final messageData = json['data'] ?? json;
-        final message = Message.fromJson(messageData as Map<String, dynamic>);
-        _messageController.add(message);
+        _messageController.add(
+          Message.fromJson(messageData as Map<String, dynamic>),
+        );
       }
     } catch (e) {
       debugPrint('Error parsing WebSocket message: $e');
@@ -183,36 +182,32 @@ class WebSocketService {
 
   void _handleError(dynamic error) {
     debugPrint('WebSocket error: $error');
-    _updateState(ConnectionState.disconnected);
     _stopHeartbeat();
+    _updateState(ConnectionState.disconnected);
     _attemptReconnect();
   }
 
   void _handleDisconnect() {
     debugPrint('WebSocket disconnected');
-    _updateState(ConnectionState.disconnected);
     _stopHeartbeat();
+    _updateState(ConnectionState.disconnected);
     _attemptReconnect();
   }
 
   void _attemptReconnect() {
+    if (!_shouldReconnect) return;
+
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-      debugPrint('Max reconnect attempts reached ($_maxReconnectAttempts)');
+      _updateState(ConnectionState.failed);
       return;
     }
 
     _reconnectAttempts++;
     _updateState(ConnectionState.reconnecting);
 
-    // Exponential backoff: 3s, 6s, 12s, 24s, ...
-    final delay = _reconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 5));
-
+    final delay = _reconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 4));
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(delay, () {
-      debugPrint(
-          'Reconnecting... (attempt $_reconnectAttempts, delay: ${delay.inSeconds}s)');
-      connect();
-    });
+    _reconnectTimer = Timer(delay, connect);
   }
 
   void _startHeartbeat() {
@@ -235,18 +230,19 @@ class WebSocketService {
 
   void _updateState(ConnectionState newState) {
     _state = newState;
-    _stateController.add(newState);
+    if (!_stateController.isClosed) {
+      _stateController.add(newState);
+    }
   }
 
-  /// Disconnect and cleanup
   void disconnect() {
+    _shouldReconnect = false;
     _reconnectTimer?.cancel();
     _stopHeartbeat();
     _channel?.sink.close();
     _updateState(ConnectionState.disconnected);
   }
 
-  /// Dispose resources
   void dispose() {
     disconnect();
     _messageController.close();
