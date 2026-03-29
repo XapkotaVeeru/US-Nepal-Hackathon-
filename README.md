@@ -4,8 +4,9 @@ Serenity is a Flutter-based mental-health support app built for the US-Nepal Hac
 
 The app combines a local-first mobile experience with backend options that support both rapid development and future cloud expansion. On the client side, users can track moods, write journal entries, view personal insights, and use voice-assisted check-ins. On the backend side, the repo now includes:
 
-- AWS/Terraform infrastructure and Lambda handlers already used by parts of the app
+- AWS/Terraform infrastructure for a simplified ECS-first stack (VPC, S3, DynamoDB, ECS)
 - a lightweight FastAPI backend under `backend/` for local development, persistence, and realtime chat experimentation
+- optional legacy Lambda handlers and Terraform modules kept for future use
 
 Important: this project is a peer-support tool, not a replacement for professional medical care, therapy, or emergency services.
 
@@ -39,7 +40,7 @@ This repo contains:
 - WebSocket-enabled chat flows and community messaging.
 - A modular FastAPI backend with SQLite, SQLModel, REST APIs, and WebSocket chat.
 - AWS infrastructure as code using Terraform.
-- Lambda functions that support community discovery, message flows, risk classification, and realtime chat.
+- Optional legacy Lambda handlers for community discovery and messaging (not wired by default).
 
 The current implementation intentionally favors a local-first user experience for mood tracking and journaling so the app remains functional even before backend sync is introduced for those features.
 
@@ -69,11 +70,11 @@ The current implementation intentionally favors a local-first user experience fo
 
 ### Infrastructure and backend
 
-- AWS API Gateway for HTTP and WebSocket access.
-- AWS Lambda functions for app workflows.
+- ECS Fargate for realtime chat services.
 - DynamoDB tables for backend data.
-- Cognito identity configuration.
-- CloudWatch, EventBridge, ECS, S3, SNS/FCM, and VPC modules via Terraform.
+- S3 for media storage.
+- VPC networking and supporting IAM via Terraform.
+- Legacy Lambda/API Gateway modules remain available but are not wired by default.
 
 ## Tech Stack
 
@@ -94,15 +95,15 @@ The current implementation intentionally favors a local-first user experience fo
 - FastAPI
 - SQLModel
 - SQLite
-- AWS Lambda
-- API Gateway (HTTP + WebSocket)
 - DynamoDB
-- Cognito
 - S3
 - ECS Fargate
-- EventBridge
-- CloudWatch
 - Terraform
+- AWS Lambda (legacy/optional)
+- API Gateway (legacy/optional)
+- Cognito (legacy/optional)
+- EventBridge (legacy/optional)
+- CloudWatch (legacy/optional)
 
 ## Repository Structure
 
@@ -110,7 +111,7 @@ The current implementation intentionally favors a local-first user experience fo
 .
 ├── android/                   # Android host project
 ├── ios/                       # iOS host project
-├── lambda/                    # AWS Lambda handlers
+├── lambda/                    # Legacy AWS Lambda handlers (optional)
 │   ├── classify_risk/
 │   ├── create_post/
 │   ├── discover_communities/
@@ -220,7 +221,7 @@ The Insights screen now computes real values from local persisted data where ava
 
 ## AWS Backend
 
-The repo also contains an AWS backend defined with Terraform and Lambda handlers.
+The repo also contains an AWS backend defined with Terraform, centered on a simplified ECS-first stack.
 
 ### Config
 
@@ -231,11 +232,9 @@ The mobile app reads AWS settings from:
 This file currently stores values such as:
 
 - AWS region
-- HTTP API base URL
-- WebSocket URL
-- Cognito identity pool ID
 - media bucket name
 - ALB DNS name
+- (optional) HTTP API base URL, WebSocket URL, and Cognito ID for the legacy Lambda stack
 
 If infrastructure changes after `terraform apply`, these values should be updated accordingly.
 
@@ -246,17 +245,21 @@ The backend is composed from modular Terraform components:
 - `vpc`
 - `s3`
 - `dynamodb`
+- `iam_ecs`
+- `ecs`
+
+Legacy modules (kept for future use but not wired by default):
+
 - `iam`
 - `bedrock_iam`
 - `sns_fcm`
 - `cognito`
 - `lambda`
 - `api_gateway`
-- `ecs`
 - `eventbridge`
 - `cloudwatch`
 
-### Lambda handlers
+### Lambda handlers (legacy)
 
 Current Lambda directories include:
 
@@ -271,7 +274,7 @@ Current Lambda directories include:
 - `ws_default`
 - `ws_disconnect`
 
-These support risk analysis, community flows, posting, matching, messaging, and realtime chat events.
+These support risk analysis, community flows, posting, matching, messaging, and realtime chat events, but are not wired in the simplified Terraform stack.
 
 ## FastAPI Backend
 
@@ -441,8 +444,8 @@ Check:
 
 - `lib/config/aws_config.dart`
 - whether the Terraform stack is deployed
-- whether the API Gateway URLs are current
-- whether the required Lambda functions and permissions exist
+- whether the ALB DNS name or backend base URL is current
+- whether the legacy API Gateway URLs are current (if using the Lambda stack)
 
 ### New Dart files are not showing up in git
 

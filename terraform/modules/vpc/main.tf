@@ -130,29 +130,6 @@ resource "aws_route_table_association" "private" {
 
 # --- Security Groups ---
 
-# Lambda Security Group
-resource "aws_security_group" "lambda" {
-  name_prefix = "${var.project_name}-${var.environment}-lambda-"
-  vpc_id      = aws_vpc.main.id
-  description = "Security group for Lambda functions"
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-lambda-sg"
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 # ECS Security Group
 resource "aws_security_group" "ecs" {
   name_prefix = "${var.project_name}-${var.environment}-ecs-"
@@ -263,10 +240,6 @@ output "public_subnet_ids" {
 
 output "private_subnet_ids" {
   value = aws_subnet.private[*].id
-}
-
-output "lambda_security_group_id" {
-  value = aws_security_group.lambda.id
 }
 
 output "ecs_security_group_id" {
