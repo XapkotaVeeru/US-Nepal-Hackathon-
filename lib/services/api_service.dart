@@ -17,14 +17,17 @@ class ApiService {
   Future<SubmissionResponse> submitPost({
     required String anonymousId,
     required String content,
+    String region = 'US',
   }) async {
     try {
       final response = await _client.post(
-        Uri.parse('$baseUrl/api/submissions'),
+        Uri.parse('$baseUrl/submissions'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'anonymousId': anonymousId,
           'content': content,
+          'consent': true,
+          'region': region,
         }),
       );
 
@@ -175,6 +178,8 @@ class ApiService {
 class SubmissionResponse {
   final String submissionId;
   final String riskLevel;
+  final String? status;
+  final String? message;
   final List<SimilarUser>? similarUsers;
   final List<SupportGroup>? supportGroups;
   final List<CrisisResource>? crisisResources;
@@ -182,6 +187,8 @@ class SubmissionResponse {
   SubmissionResponse({
     required this.submissionId,
     required this.riskLevel,
+    this.status,
+    this.message,
     this.similarUsers,
     this.supportGroups,
     this.crisisResources,
@@ -191,6 +198,8 @@ class SubmissionResponse {
     return SubmissionResponse(
       submissionId: json['submissionId'] as String,
       riskLevel: json['riskLevel'] as String,
+      status: json['status'] as String?,
+      message: json['message'] as String?,
       similarUsers: json['similarUsers'] != null
           ? (json['similarUsers'] as List)
               .map((u) => SimilarUser.fromJson(u))

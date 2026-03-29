@@ -34,7 +34,8 @@ void main() async {
 
   final anonymousIdService = await AnonymousIdService.create();
 
-  const apiBaseUrl = 'https://your-api-gateway-url.amazonaws.com';
+  const apiBaseUrl =
+      'https://x0dge4fjri.execute-api.us-east-1.amazonaws.com/prod';
   final apiService = ApiService(baseUrl: apiBaseUrl);
 
   runApp(MentalHealthSupportApp(
@@ -140,8 +141,7 @@ class MentalHealthSupportApp extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.sage,
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -348,6 +348,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _tabControllers[index].forward();
     setState(() => _currentIndex = index);
   }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -459,9 +460,7 @@ class _TopBar extends StatelessWidget {
                     width: 20,
                     height: 2,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFFE8F0EE)
-                          : AppColors.ink,
+                      color: isDark ? const Color(0xFFE8F0EE) : AppColors.ink,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -574,8 +573,7 @@ class _NavButton extends StatelessWidget {
         animation: controller,
         builder: (context, child) {
           return Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -603,9 +601,7 @@ class _NavButton extends StatelessWidget {
                   item.label,
                   style: TextStyle(
                     fontSize: 10,
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.w400,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                     color: isSelected
                         ? colorScheme.primary
                         : colorScheme.onSurface.withValues(alpha: 0.4),
@@ -644,14 +640,13 @@ class AppDrawer extends StatelessWidget {
           return Column(
             children: [
               // ── Profile Header ───────────────
-              _DrawerHeader(
-                  user: user, isDark: isDark, textTheme: textTheme),
+              _DrawerHeader(user: user, isDark: isDark, textTheme: textTheme),
 
               // ── Navigation Items ─────────────
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: [
                     // TOOLS section
                     _DrawerSection(
@@ -666,8 +661,7 @@ class AppDrawer extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const InsightsScreen()),
+                                  builder: (_) => const InsightsScreen()),
                             );
                           },
                         ),
@@ -680,8 +674,7 @@ class AppDrawer extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const MoodTrackingScreen()),
+                                  builder: (_) => const MoodTrackingScreen()),
                             );
                           },
                         ),
@@ -694,8 +687,7 @@ class AppDrawer extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const JournalingScreen()),
+                                  builder: (_) => const JournalingScreen()),
                             );
                           },
                         ),
@@ -717,8 +709,7 @@ class AppDrawer extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const SettingsScreen()),
+                                  builder: (_) => const SettingsScreen()),
                             );
                           },
                         ),
@@ -751,8 +742,7 @@ class AppDrawer extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  const CrisisResourcesScreen()),
+                              builder: (_) => const CrisisResourcesScreen()),
                         );
                       },
                     ),
@@ -834,8 +824,7 @@ class AppDrawer extends StatelessWidget {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(
-                    content: Text(
-                        'Logged out. New anonymous ID generated!'),
+                    content: Text('Logged out. New anonymous ID generated!'),
                   ),
                 );
               }
@@ -860,9 +849,7 @@ class _DrawerHeader extends StatelessWidget {
   final TextTheme textTheme;
 
   const _DrawerHeader(
-      {required this.user,
-      required this.isDark,
-      required this.textTheme});
+      {required this.user, required this.isDark, required this.textTheme});
 
   @override
   Widget build(BuildContext context) {
@@ -877,8 +864,7 @@ class _DrawerHeader extends StatelessWidget {
         color: isDark ? AppColors.darkCard : Colors.white,
         border: Border(
           bottom: BorderSide(
-            color:
-                isDark ? AppColors.darkBorder : AppColors.creamDark,
+            color: isDark ? AppColors.darkBorder : AppColors.creamDark,
             width: 1,
           ),
         ),
@@ -892,13 +878,11 @@ class _DrawerHeader extends StatelessWidget {
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border:
-                      Border.all(color: AppColors.sage, width: 2),
+                  border: Border.all(color: AppColors.sage, width: 2),
                 ),
                 child: CircleAvatar(
                   radius: 28,
-                  backgroundColor:
-                      AppColors.sageLight.withValues(alpha: 0.2),
+                  backgroundColor: AppColors.sageLight.withValues(alpha: 0.2),
                   child: const Icon(
                     Icons.spa_outlined,
                     color: AppColors.sage,
@@ -916,9 +900,7 @@ class _DrawerHeader extends StatelessWidget {
                     color: AppColors.sage,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isDark
-                          ? AppColors.darkCard
-                          : Colors.white,
+                      color: isDark ? AppColors.darkCard : Colors.white,
                       width: 2,
                     ),
                   ),
@@ -938,14 +920,12 @@ class _DrawerHeader extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               'ID: ${user.anonymousId.toString().substring(0, 12)}...',
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.inkMuted),
+              style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
             ),
           ],
           const SizedBox(height: 6),
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               color: AppColors.sage.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
@@ -1022,13 +1002,11 @@ class _DrawerItem extends StatelessWidget {
       bgColor = const Color(0xFFD45C5C).withValues(alpha: 0.1);
     } else if (isEmergency) {
       iconColor = const Color(0xFFE8A838);
-      textColor =
-          isDark ? const Color(0xFFFFD580) : const Color(0xFF7A4A00);
+      textColor = isDark ? const Color(0xFFFFD580) : const Color(0xFF7A4A00);
       bgColor = const Color(0xFFE8A838).withValues(alpha: 0.12);
     } else {
       iconColor = AppColors.sage;
-      textColor =
-          isDark ? const Color(0xFFCFDDDA) : AppColors.inkLight;
+      textColor = isDark ? const Color(0xFFCFDDDA) : AppColors.inkLight;
       bgColor = isDark ? AppColors.darkCard : AppColors.creamDark;
     }
 
@@ -1038,8 +1016,7 @@ class _DrawerItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
               Container(
@@ -1066,9 +1043,7 @@ class _DrawerItem extends StatelessWidget {
                 Icon(
                   Icons.chevron_right_rounded,
                   size: 16,
-                  color: isDark
-                      ? AppColors.darkBorder
-                      : AppColors.inkMuted,
+                  color: isDark ? AppColors.darkBorder : AppColors.inkMuted,
                 ),
             ],
           ),
