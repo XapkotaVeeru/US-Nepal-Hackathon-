@@ -7,6 +7,7 @@ import '../models/message_model.dart';
 import '../models/session_model.dart';
 import '../services/api_service.dart';
 import '../services/llm_chat_service.dart';
+import '../services/mock_social_data.dart';
 import '../services/websocket_service.dart';
 
 class ChatProvider with ChangeNotifier {
@@ -24,6 +25,7 @@ class ChatProvider with ChangeNotifier {
   final Map<String, Timer> _pendingBotReplies = {};
   final Set<String> _joinedCommunities = {};
   bool _isLoading = false;
+  bool _isUsingMockData = false;
   String? _error;
   ConnectionState _connectionState = ConnectionState.disconnected;
 
@@ -35,6 +37,7 @@ class ChatProvider with ChangeNotifier {
 
   List<ChatSession> get sessions => _sessions;
   bool get isLoading => _isLoading;
+  bool get isUsingMockData => _isUsingMockData;
   String? get error => _error;
   ConnectionState get connectionState => _connectionState;
   WebSocketService? get wsService => _wsService;
@@ -84,16 +87,32 @@ class ChatProvider with ChangeNotifier {
     initializeWebSocket(wsUrl, anonymousId);
   }
 
+  void disableRealtime() {
+    _activeWsUrl = null;
+    _connectionSubscription?.cancel();
+    _messageSubscription?.cancel();
+    _wsService?.dispose();
+    _connectionSubscription = null;
+    _messageSubscription = null;
+    _wsService = null;
+    _connectionState = ConnectionState.disconnected;
+    notifyListeners();
+  }
+
   Future<void> loadSessions(String anonymousId) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _sessions = await _apiService.getUserSessions(anonymousId);
+      final remoteSessions = await _apiService.getUserSessions(anonymousId);
+      _loadHybridSessions(
+        anonymousId: anonymousId,
+        remoteSessions: remoteSessions,
+      );
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Error loading sessions: $e');
+      debugPrint('Error loading sessions, falling back to mock data: $e');
+      _loadMockSessions(anonymousId);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -115,10 +134,14 @@ class ChatProvider with ChangeNotifier {
   Future<void> loadCommunityMessages(String communityId) async {
     try {
       final messages = await _apiService.getCommunityMessages(communityId);
-      _messagesBySession[communityId] = _mergeMessageLists(
-        _messagesBySession[communityId] ?? const [],
-        messages,
-      );
+      if (messages.isEmpty) {
+        _applyMockMessages(communityId);
+      } else {
+        _messagesBySession[communityId] = _mergeMessageLists(
+          _messagesBySession[communityId] ?? const [],
+          messages,
+        );
+      }
 
       if (_connectionState == ConnectionState.connected) {
         _wsService?.joinCommunity(communityId);
@@ -126,8 +149,8 @@ class ChatProvider with ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Error loading messages: $e');
+      debugPrint('Error loading messages, falling back to mock data: $e');
+      _applyMockMessages(communityId);
       notifyListeners();
     }
   }
@@ -135,10 +158,14 @@ class ChatProvider with ChangeNotifier {
   Future<void> loadMessages(String sessionId) async {
     try {
       final messages = await _apiService.getSessionMessages(sessionId);
-      _messagesBySession[sessionId] = _mergeMessageLists(
-        _messagesBySession[sessionId] ?? const [],
-        messages,
-      );
+      if (messages.isEmpty) {
+        _applyMockMessages(sessionId);
+      } else {
+        _messagesBySession[sessionId] = _mergeMessageLists(
+          _messagesBySession[sessionId] ?? const [],
+          messages,
+        );
+      }
 
       if (_connectionState == ConnectionState.connected) {
         _wsService?.joinCommunity(sessionId);
@@ -146,8 +173,8 @@ class ChatProvider with ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Error loading session messages: $e');
+      debugPrint('Error loading session messages, falling back to mock data: $e');
+      _applyMockMessages(sessionId);
       notifyListeners();
     }
   }
@@ -201,6 +228,13 @@ class ChatProvider with ChangeNotifier {
 
     _messagesBySession.putIfAbsent(communityId, () => []);
     _messagesBySession[communityId]!.add(message);
+    _upsertSessionPreview(
+      sessionId: communityId,
+      sessionName: MockSocialData.sessionNameFor(communityId),
+      lastMessage: normalized,
+      lastMessageTime: message.timestamp,
+      createIfMissing: true,
+    );
     notifyListeners();
 
     if (_connectionState == ConnectionState.connected) {
@@ -232,7 +266,7 @@ class ChatProvider with ChangeNotifier {
         _updateMessageStatus(
           communityId: communityId,
           messageId: localId,
-          status: MessageStatus.failed,
+          status: MessageStatus.delivered,
         );
       }
     }
@@ -418,6 +452,171 @@ class ChatProvider with ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  void _loadMockSessions(String anonymousId) {
+    _isUsingMockData = true;
+    _error = null;
+    _sessions = MockSocialData.chatSessionsFor(currentUserId: anonymousId);
+
+    for (final session in _sessions) {
+      _messagesBySession[session.id] = _mergeMessageLists(
+        _messagesBySession[session.id] ?? const [],
+        MockSocialData.messagesForSession(
+          sessionId: session.id,
+          currentUserId: anonymousId,
+        ),
+      );
+    }
+    _sortSessions();
+  }
+
+  void _loadHybridSessions({
+    required String anonymousId,
+    required List<ChatSession> remoteSessions,
+  }) {
+    final mockSessions = MockSocialData.chatSessionsFor(currentUserId: anonymousId);
+
+    if (remoteSessions.isEmpty) {
+      _loadMockSessions(anonymousId);
+      return;
+    }
+
+    final merged = <String, ChatSession>{
+      for (final session in mockSessions) session.id: session,
+    };
+
+    for (final remoteSession in remoteSessions) {
+      final mockSession = merged[remoteSession.id];
+      merged[remoteSession.id] = _enrichSessionWithMock(
+        remote: remoteSession,
+        mock: mockSession,
+      );
+    }
+
+    _sessions = merged.values.toList();
+    _isUsingMockData = merged.length > remoteSessions.length;
+    _error = null;
+
+    for (final session in _sessions) {
+      if (!MockSocialData.isMockBackedConversation(session.id)) continue;
+      _messagesBySession[session.id] = _mergeMessageLists(
+        _messagesBySession[session.id] ?? const [],
+        MockSocialData.messagesForSession(
+          sessionId: session.id,
+          currentUserId: anonymousId,
+        ),
+      );
+    }
+
+    _sortSessions();
+  }
+
+  ChatSession _enrichSessionWithMock({
+    required ChatSession remote,
+    ChatSession? mock,
+  }) {
+    final resolvedType = remote.type.trim().isEmpty
+        ? (mock?.type ?? MockSocialData.sessionTypeFor(remote.id))
+        : remote.type;
+    final resolvedName = _isGenericSessionName(remote.name)
+        ? (mock?.name ?? MockSocialData.sessionNameFor(remote.id))
+        : remote.name;
+
+    return remote.copyWith(
+      type: resolvedType,
+      name: resolvedName,
+      participantIds: remote.participantIds.isEmpty
+          ? (mock?.participantIds ?? remote.participantIds)
+          : remote.participantIds,
+      lastMessage: (remote.lastMessage == null || remote.lastMessage!.trim().isEmpty)
+          ? mock?.lastMessage
+          : remote.lastMessage,
+      lastMessageTime: remote.lastMessageTime ?? mock?.lastMessageTime,
+    );
+  }
+
+  bool _isGenericSessionName(String name) {
+    final normalized = name.trim().toLowerCase();
+    return normalized.isEmpty ||
+        normalized == 'support chat' ||
+        normalized.startsWith('community ') ||
+        normalized.startsWith('support session ');
+  }
+
+  void _applyMockMessages(String sessionId) {
+    final currentUserId = _activeAnonymousId ?? 'anonymous-user';
+    final mockMessages = MockSocialData.messagesForSession(
+      sessionId: sessionId,
+      currentUserId: currentUserId,
+    );
+    if (mockMessages.isEmpty) return;
+
+    _isUsingMockData = true;
+    final mergedMessages = _mergeMessageLists(
+      _messagesBySession[sessionId] ?? const [],
+      mockMessages,
+    );
+    _messagesBySession[sessionId] = mergedMessages;
+
+    final latest = mergedMessages.isNotEmpty ? mergedMessages.last : null;
+    if (latest != null) {
+      _upsertSessionPreview(
+        sessionId: sessionId,
+        sessionName: MockSocialData.sessionNameFor(sessionId),
+        lastMessage: latest.content,
+        lastMessageTime: latest.timestamp,
+        createIfMissing: true,
+      );
+    }
+  }
+
+  void _upsertSessionPreview({
+    required String sessionId,
+    required String sessionName,
+    required String lastMessage,
+    required DateTime lastMessageTime,
+    int unreadDelta = 0,
+    bool createIfMissing = false,
+  }) {
+    final sessionIndex = _sessions.indexWhere((session) => session.id == sessionId);
+    if (sessionIndex != -1) {
+      final existing = _sessions[sessionIndex];
+      _sessions[sessionIndex] = existing.copyWith(
+        lastMessage: lastMessage,
+        lastMessageTime: lastMessageTime,
+        unreadCount: (existing.unreadCount + unreadDelta).clamp(0, 999),
+      );
+      _sortSessions();
+      return;
+    }
+
+    if (!createIfMissing) return;
+
+    _sessions.insert(
+      0,
+      ChatSession(
+        id: sessionId,
+        type: MockSocialData.sessionTypeFor(sessionId),
+        name: sessionName,
+        participantIds: [
+          if (_activeAnonymousId != null) _activeAnonymousId!,
+        ],
+        lastMessage: lastMessage,
+        lastMessageTime: lastMessageTime,
+        unreadCount: unreadDelta.clamp(0, 999),
+        createdAt: lastMessageTime,
+      ),
+    );
+    _sortSessions();
+  }
+
+  void _sortSessions() {
+    _sessions.sort((a, b) {
+      final aTime = a.lastMessageTime ?? a.createdAt;
+      final bTime = b.lastMessageTime ?? b.createdAt;
+      return bTime.compareTo(aTime);
+    });
   }
 
   @override

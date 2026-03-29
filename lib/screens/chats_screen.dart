@@ -46,7 +46,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           body: sessions.isEmpty
               ? _buildEmptyState(context)
               : RefreshIndicator(
-                  onRefresh: () async {
+                onRefresh: () async {
                     final anonymousId = context.read<AppStateProvider>().anonymousId;
                     if (anonymousId != null) {
                       await context.read<ChatProvider>().loadSessions(anonymousId);
@@ -55,7 +55,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   child: ListView.builder(
                     itemCount: sessions.length + 1,
                     itemBuilder: (context, index) {
-                      if (index == 0) return _buildHeader(context, sessions.length);
+                      if (index == 0) {
+                        return _buildHeader(
+                          context,
+                          sessions.length,
+                        );
+                      }
                       return _buildSessionTile(context, sessions[index - 1]);
                     },
                   ),
@@ -65,7 +70,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, int sessionCount) {
+  Widget _buildHeader(
+    BuildContext context,
+    int sessionCount,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -98,7 +106,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           TextField(
             readOnly: true,
             decoration: InputDecoration(
-              hintText: 'Chats update here after requests are accepted',
+              hintText: 'Your conversations and support rooms appear here',
               prefixIcon: const Icon(Icons.search, size: 20),
               filled: true,
               fillColor:
@@ -149,7 +157,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Send a chat request or create a group from your match results. Once it is accepted, it will appear here.',
+              'Your support conversations will appear here. Pull to refresh if you recently opened a room or accepted a request.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.outline,
                   ),

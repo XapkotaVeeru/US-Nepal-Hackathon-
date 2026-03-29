@@ -45,6 +45,7 @@ void main() async {
   const apiBaseUrl = BackendConfig.defaultApiBaseUrl;
   final apiService = ApiService(baseUrl: apiBaseUrl);
   const emotionalAnalysisService = ResilientEmotionalAnalysisService(
+    remoteAdapter: HuggingFaceEmbeddingEmotionalAnalysisAdapter(),
     fallback: LocalEmotionalAnalysisService(),
   );
   const supportMatchingService = LocalSupportMatchingService();
@@ -139,10 +140,14 @@ class MentalHealthSupportApp extends StatelessWidget {
                   apiService: apiService,
                   llmChatService: llmChatService,
                 );
-            provider.bindAnonymousUser(
-              anonymousId: appState.anonymousId,
-              wsUrl: BackendConfig.websocketUrlFor(apiService.baseUrl),
-            );
+            if (BackendConfig.supportsWebSockets(apiService.baseUrl)) {
+              provider.bindAnonymousUser(
+                anonymousId: appState.anonymousId,
+                wsUrl: BackendConfig.websocketUrlFor(apiService.baseUrl),
+              );
+            } else {
+              provider.disableRealtime();
+            }
             return provider;
           },
         ),

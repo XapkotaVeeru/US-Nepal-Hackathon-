@@ -2,12 +2,14 @@ import 'package:flutter/foundation.dart';
 
 import '../models/notification_model.dart';
 import '../services/api_service.dart';
+import '../services/mock_social_data.dart';
 
 class NotificationProvider with ChangeNotifier {
   final ApiService _apiService;
 
   List<NotificationItem> _notifications = [];
   bool _isLoading = false;
+  bool _isUsingMockData = false;
   String? _error;
   String? _activeUserId;
 
@@ -15,6 +17,7 @@ class NotificationProvider with ChangeNotifier {
 
   List<NotificationItem> get notifications => _notifications;
   bool get isLoading => _isLoading;
+  bool get isUsingMockData => _isUsingMockData;
   String? get error => _error;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
 
@@ -34,10 +37,16 @@ class NotificationProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _notifications = await _apiService.listNotifications(userId: userId);
+      final remoteNotifications = await _apiService.listNotifications(userId: userId);
+      if (remoteNotifications.isEmpty) {
+        _loadMockNotifications(userId);
+      } else {
+        _notifications = remoteNotifications;
+        _isUsingMockData = false;
+      }
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Error loading notifications: $e');
+      debugPrint('Error loading notifications, falling back to mock data: $e');
+      _loadMockNotifications(userId);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -51,10 +60,15 @@ class NotificationProvider with ChangeNotifier {
 
     try {
       final requests = await _apiService.getChatRequests(anonymousId);
-      _notifications = requests.map(_notificationFromRequest).toList();
+      if (requests.isEmpty) {
+        _loadMockNotifications(anonymousId);
+      } else {
+        _notifications = requests.map(_notificationFromRequest).toList();
+        _isUsingMockData = false;
+      }
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Error loading chat requests: $e');
+      debugPrint('Error loading chat requests, falling back to mock data: $e');
+      _loadMockNotifications(anonymousId);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -158,6 +172,7 @@ class NotificationProvider with ChangeNotifier {
   }
 
   Future<void> _markAsReadRemote(String notificationId) async {
+    if (_isMockId(notificationId)) return;
     final updated = await _apiService.markNotificationRead(
       notificationId: notificationId,
     );
@@ -194,6 +209,36 @@ class NotificationProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      if (_isMockId(requestId)) {
+        final notification = _notifications.firstWhere(
+          (item) => item.actionData?['requestId'] == requestId,
+          orElse: () => NotificationItem(
+            id: 'mock-fallback',
+            type: NotificationType.message,
+            title: 'Chat ready',
+            message: 'You can open the support chat now.',
+            timestamp: DateTime.now(),
+            isRead: false,
+          ),
+        );
+        _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
+        _notifications.insert(
+          0,
+          NotificationItem(
+            id: 'mock-accepted-${DateTime.now().microsecondsSinceEpoch}',
+            type: NotificationType.message,
+            title: 'Chat ready',
+            message: 'Your support chat is ready for you to open.',
+            timestamp: DateTime.now(),
+            isRead: false,
+            actionData: notification.actionData,
+          ),
+        );
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
       await _apiService.acceptChatRequest(requestId);
       if (_activeUserId != null) {
         await loadNotifications();
@@ -214,6 +259,24 @@ class NotificationProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      if (_isMockId(requestId)) {
+        _notifications.removeWhere((n) => n.actionData?['requestId'] == requestId);
+        _notifications.insert(
+          0,
+          NotificationItem(
+            id: 'mock-declined-${DateTime.now().microsecondsSinceEpoch}',
+            type: NotificationType.system,
+            title: 'Request declined',
+            message: 'The request was cleared from your notification list.',
+            timestamp: DateTime.now(),
+            isRead: false,
+          ),
+        );
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
       await _apiService.declineChatRequest(requestId);
       if (_activeUserId != null) {
         await loadNotifications();
@@ -250,6 +313,14 @@ class NotificationProvider with ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+
+  void _loadMockNotifications(String userId) {
+    _notifications = MockSocialData.notificationsFor(currentUserId: userId);
+    _isUsingMockData = true;
+    _error = null;
+  }
+
+  bool _isMockId(String id) => id.startsWith('mock-');
 
   NotificationItem _notificationFromRequest(Map<String, dynamic> request) {
     final type = request['type'] == 'group'

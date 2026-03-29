@@ -55,6 +55,7 @@ This repo contains:
 - Voice-assisted emotional check-ins using speech-to-text and a sentiment-analysis service layer.
 - WebSocket-enabled chat flows and community messaging.
 - A modular FastAPI backend with SQLite, SQLModel, REST APIs, and WebSocket chat.
+- Seeded fallback conversations and notifications so the app stays usable when hosted chat or notification services are unavailable.
 
 The current implementation intentionally favors a local-first user experience for mood tracking and journaling so the app remains functional even before backend sync is introduced for those features.
 
@@ -65,7 +66,8 @@ The current implementation intentionally favors a local-first user experience fo
 - Anonymous user profile bootstrapping.
 - Community discovery and joining.
 - Group and peer-support oriented chat UI.
-- Realtime messaging via WebSocket-backed infrastructure.
+- Realtime messaging via WebSocket-backed infrastructure when a compatible backend is available.
+- Seeded conversations and notifications that keep the experience populated during backend outages or incomplete deployments.
 
 ### Emotional wellness features
 
@@ -221,7 +223,7 @@ The repo also includes a hackathon-friendly FastAPI backend under `backend/`. It
 
 ### Why it exists
 
-- lets the Flutter app move beyond mock/local-only data in a controlled way
+- lets the Flutter app move beyond local-only data in a controlled way
 - works locally with SQLite
 - keeps the code modular enough to switch to PostgreSQL later
 - keeps future AI integration behind backend endpoints rather than inside the Flutter app
@@ -300,6 +302,13 @@ Useful URLs once it starts:
 
 If you want the Flutter app to use this backend later, the easiest next step is to point selected `ApiService` calls at the FastAPI server and map the existing Flutter models to the backend response shapes.
 
+### Realtime chat note
+
+- Local FastAPI development supports WebSockets through `/ws`.
+- Hosted HTTP APIs may not always expose a compatible WebSocket upgrade path.
+- The Flutter app now disables remote WebSockets by default unless you explicitly opt in with `--dart-define=ENABLE_REMOTE_WEBSOCKETS=true`.
+- When realtime chat is unavailable, the app keeps chat and notifications usable with seeded fallback content and local reply handling.
+
 ## Development Workflow
 
 ### Recommended local loop
@@ -335,6 +344,12 @@ Prefer this general pattern:
 - Use hot reload with `r`.
 - Use hot restart with `R` if widget tree state is stuck.
 - Fully restart only when dependencies or native configuration changed.
+
+### Hosted WebSocket shows `403`
+
+- The deployed HTTP endpoint is reachable, but its WebSocket upgrade path is not accepting the connection.
+- The app now falls back to local HTTP and seeded chat data instead of retrying that socket forever.
+- For realtime testing, run the local FastAPI backend and point the app to `http://127.0.0.1:8000`.
 
 ### Voice features do not work
 

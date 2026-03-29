@@ -183,6 +183,11 @@ class WebSocketService {
   void _handleError(dynamic error) {
     debugPrint('WebSocket error: $error');
     _stopHeartbeat();
+    if (_isFatalHandshakeFailure(error)) {
+      _shouldReconnect = false;
+      _updateState(ConnectionState.failed);
+      return;
+    }
     _updateState(ConnectionState.disconnected);
     _attemptReconnect();
   }
@@ -233,6 +238,13 @@ class WebSocketService {
     if (!_stateController.isClosed) {
       _stateController.add(newState);
     }
+  }
+
+  bool _isFatalHandshakeFailure(dynamic error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('http status code: 403') ||
+        message.contains('was not upgraded to websocket') ||
+        message.contains('forbidden');
   }
 
   void disconnect() {

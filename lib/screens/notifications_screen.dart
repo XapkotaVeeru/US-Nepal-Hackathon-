@@ -22,14 +22,56 @@ class NotificationsScreen extends StatelessWidget {
 
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: provider.notifications.length,
+          itemCount: provider.notifications.length + (provider.isUsingMockData ? 1 : 0),
           separatorBuilder: (_, __) => const SizedBox(height: 6),
           itemBuilder: (context, index) {
-            final notification = provider.notifications[index];
+            if (provider.isUsingMockData && index == 0) {
+              return const _MockNotificationBanner();
+            }
+            final adjustedIndex = provider.isUsingMockData ? index - 1 : index;
+            final notification = provider.notifications[adjustedIndex];
             return NotificationTile(notification: notification);
           },
         );
       },
+    );
+  }
+}
+
+class _MockNotificationBanner extends StatelessWidget {
+  const _MockNotificationBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colorScheme.secondaryContainer.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.notifications_active_outlined,
+              color: colorScheme.onSecondaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Your latest alerts and support updates appear here.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

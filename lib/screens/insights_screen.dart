@@ -26,6 +26,16 @@ class InsightsScreen extends StatelessWidget {
         final journalEntries = journalProvider.entries;
         final moodEntries = moodProvider.entries;
         final weeklyAverage = _weeklyAverageMood(weeklyMoodData);
+        final activeDays = weeklyMoodData.where((entry) => entry.mood > 0).length;
+        final noteBackedCheckIns =
+            moodEntries.where((entry) => entry.note.trim().isNotEmpty).length;
+        final promptBasedEntries =
+            journalEntries.where((entry) => entry.prompt != null).length;
+        final averageJournalWords = _averageJournalWords(journalEntries);
+        final positiveMoodShare = _positiveMoodShare(moodEntries);
+        final reflectiveDay = _mostReflectiveDay(moodEntries, journalEntries);
+        final latestMoodNote = _latestMoodNote(moodEntries);
+        final latestJournal = journalEntries.isEmpty ? null : journalEntries.first;
 
         return Scaffold(
           appBar: AppBar(
@@ -55,6 +65,31 @@ class InsightsScreen extends StatelessWidget {
                   moodEntries: moodEntries,
                   journalEntries: journalEntries,
                   weeklyAverage: weeklyAverage,
+                ),
+                const SizedBox(height: 20),
+                _buildPatternCard(
+                  context,
+                  activeDays: activeDays,
+                  noteBackedCheckIns: noteBackedCheckIns,
+                  averageJournalWords: averageJournalWords,
+                  promptBasedEntries: promptBasedEntries,
+                  journalEntriesCount: journalEntries.length,
+                  reflectiveDay: reflectiveDay,
+                ),
+                const SizedBox(height: 20),
+                _buildMomentumCard(
+                  context,
+                  activeDays: activeDays,
+                  positiveMoodShare: positiveMoodShare,
+                  moodEntriesCount: moodEntries.length,
+                  journalEntriesCount: journalEntries.length,
+                ),
+                const SizedBox(height: 20),
+                _buildHighlightsCard(
+                  context,
+                  latestMoodNote: latestMoodNote,
+                  latestJournal: latestJournal,
+                  averageJournalWords: averageJournalWords,
                 ),
                 const SizedBox(height: 20),
                 _buildWellnessStreakCard(
@@ -614,6 +649,276 @@ class InsightsScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildPatternCard(
+    BuildContext context, {
+    required int activeDays,
+    required int noteBackedCheckIns,
+    required double averageJournalWords,
+    required int promptBasedEntries,
+    required int journalEntriesCount,
+    required String reflectiveDay,
+  }) {
+    final promptLabel = journalEntriesCount == 0
+        ? 'No journal entries yet'
+        : '$promptBasedEntries of $journalEntriesCount used prompts';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.insights_outlined,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Patterns & Habits',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildInsightRow(
+              context,
+              icon: Icons.calendar_today_outlined,
+              label: 'Active Days This Week',
+              value: '$activeDays of 7',
+            ),
+            const Divider(height: 24),
+            _buildInsightRow(
+              context,
+              icon: Icons.sticky_note_2_outlined,
+              label: 'Check-ins With Notes',
+              value: '$noteBackedCheckIns',
+            ),
+            const Divider(height: 24),
+            _buildInsightRow(
+              context,
+              icon: Icons.notes_outlined,
+              label: 'Average Journal Length',
+              value:
+                  averageJournalWords == 0 ? 'No entries' : '${averageJournalWords.toStringAsFixed(0)} words',
+            ),
+            const Divider(height: 24),
+            _buildInsightRow(
+              context,
+              icon: Icons.auto_awesome_outlined,
+              label: 'Prompt Usage',
+              value: promptLabel,
+            ),
+            const Divider(height: 24),
+            _buildInsightRow(
+              context,
+              icon: Icons.today_outlined,
+              label: 'Most Reflective Day',
+              value: reflectiveDay,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMomentumCard(
+    BuildContext context, {
+    required int activeDays,
+    required double positiveMoodShare,
+    required int moodEntriesCount,
+    required int journalEntriesCount,
+  }) {
+    final checkInProgress = activeDays / 7;
+    final journalingProgress = journalEntriesCount == 0
+        ? 0.0
+        : (journalEntriesCount / (moodEntriesCount + journalEntriesCount))
+            .clamp(0.0, 1.0);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.speed_outlined,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Momentum Snapshot',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              moodEntriesCount == 0 && journalEntriesCount == 0
+                  ? 'Your momentum builds as soon as you start logging moods or journaling.'
+                  : 'A quick read on consistency, recovery moments, and reflection balance.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 18),
+            _buildProgressMetric(
+              context,
+              label: 'Weekly consistency',
+              valueLabel: '$activeDays/7 days',
+              progress: checkInProgress,
+            ),
+            const SizedBox(height: 14),
+            _buildProgressMetric(
+              context,
+              label: 'Positive mood share',
+              valueLabel: moodEntriesCount == 0
+                  ? 'No mood data'
+                  : '${(positiveMoodShare * 100).round()}%',
+              progress: positiveMoodShare,
+            ),
+            const SizedBox(height: 14),
+            _buildProgressMetric(
+              context,
+              label: 'Journaling balance',
+              valueLabel: journalEntriesCount == 0
+                  ? 'No journals yet'
+                  : '$journalEntriesCount entries',
+              progress: journalingProgress,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHighlightsCard(
+    BuildContext context, {
+    required String latestMoodNote,
+    required JournalEntry? latestJournal,
+    required double averageJournalWords,
+  }) {
+    final latestJournalSnippet = latestJournal == null
+        ? 'Your next journal entry will show up here with a quick summary.'
+        : latestJournal.content.trim().isEmpty
+            ? latestJournal.title
+            : latestJournal.content.trim();
+
+    return Card(
+      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_graph_rounded,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Recent Highlights',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildHighlightBlock(
+              context,
+              title: 'Latest mood note',
+              body: latestMoodNote,
+            ),
+            const SizedBox(height: 14),
+            _buildHighlightBlock(
+              context,
+              title: 'Latest journal snapshot',
+              body: _truncate(latestJournalSnippet, 120),
+            ),
+            const SizedBox(height: 14),
+            _buildHighlightBlock(
+              context,
+              title: 'Writing rhythm',
+              body: averageJournalWords == 0
+                  ? 'Once you start journaling, we will estimate how detailed your reflections usually are.'
+                  : 'Your recent journals average about ${averageJournalWords.toStringAsFixed(0)} words each.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressMetric(
+    BuildContext context, {
+    required String label,
+    required String valueLabel,
+    required double progress,
+  }) {
+    final normalized = progress.clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            Text(
+              valueLabel,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            minHeight: 10,
+            value: normalized,
+            backgroundColor: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.7),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHighlightBlock(
+    BuildContext context, {
+    required String title,
+    required String body,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          body,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+
   List<_MoodDayData> _buildWeeklyMoodData(List<MoodEntry> entries) {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
@@ -643,6 +948,58 @@ class InsightsScreen extends StatelessWidget {
     final values = weeklyMoodData.where((entry) => entry.mood > 0).map((entry) => entry.mood).toList();
     if (values.isEmpty) return 0;
     return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  double _averageJournalWords(List<JournalEntry> entries) {
+    if (entries.isEmpty) return 0;
+    final totalWords = entries.fold<int>(0, (sum, entry) {
+      return sum + _wordCount('${entry.title} ${entry.content}');
+    });
+    return totalWords / entries.length;
+  }
+
+  double _positiveMoodShare(List<MoodEntry> entries) {
+    if (entries.isEmpty) return 0;
+    final positiveCount = entries.where((entry) => entry.moodLevel >= 4).length;
+    return positiveCount / entries.length;
+  }
+
+  String _mostReflectiveDay(
+    List<MoodEntry> moodEntries,
+    List<JournalEntry> journalEntries,
+  ) {
+    final counts = <int, int>{};
+    for (final entry in moodEntries) {
+      counts.update(entry.createdAt.weekday, (value) => value + 1, ifAbsent: () => 1);
+    }
+    for (final entry in journalEntries) {
+      counts.update(entry.createdAt.weekday, (value) => value + 1, ifAbsent: () => 1);
+    }
+    if (counts.isEmpty) return 'Waiting for data';
+
+    final day = counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return labels[day - 1];
+  }
+
+  String _latestMoodNote(List<MoodEntry> entries) {
+    for (final entry in entries) {
+      if (entry.note.trim().isNotEmpty) {
+        return _truncate(entry.note.trim(), 120);
+      }
+    }
+    return 'Add a short note to your next mood check-in and it will appear here.';
+  }
+
+  int _wordCount(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) return 0;
+    return normalized.split(RegExp(r'\s+')).length;
+  }
+
+  String _truncate(String text, int maxLength) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength).trimRight()}...';
   }
 
   String _moodLabel(int moodLevel) {
