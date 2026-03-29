@@ -20,6 +20,10 @@ class AnonymousUser(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     display_name: str = Field(index=True, max_length=120)
     is_active: bool = Field(default=True)
+    notifications_enabled: bool = Field(default=True)
+    sound_enabled: bool = Field(default=True)
+    chat_requests_enabled: bool = Field(default=True)
+    group_invites_enabled: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

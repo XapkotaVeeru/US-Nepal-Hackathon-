@@ -3,12 +3,18 @@ from fastapi import HTTPException, status
 
 from app.models import AnonymousUser, ChatSession, JournalEntry, Message, MoodEntry, Notification
 from app.models.common import utc_now
-from app.schemas.anonymous_user import AnonymousUserCreate
+from app.schemas.anonymous_user import AnonymousUserCreate, AnonymousUserUpsert
 
 
 def create_anonymous_user(session: Session, payload: AnonymousUserCreate) -> AnonymousUser:
-    name = payload.display_name or _generate_display_name()
-    user = AnonymousUser(display_name=name)
+    name = _clean_display_name(payload.display_name) or _generate_display_name()
+    user = AnonymousUser(
+        display_name=name,
+        notifications_enabled=payload.notifications_enabled,
+        sound_enabled=payload.sound_enabled,
+        chat_requests_enabled=payload.chat_requests_enabled,
+        group_invites_enabled=payload.group_invites_enabled,
+    )
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -31,8 +37,53 @@ def get_or_create_user(
     if user:
         return user
 
-    name = display_name or _generate_display_name()
+    name = _clean_display_name(display_name) or _generate_display_name()
     user = AnonymousUser(id=user_id, display_name=name)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def upsert_user(
+    session: Session,
+    user_id: str,
+    payload: AnonymousUserUpsert,
+) -> AnonymousUser:
+    user = session.get(AnonymousUser, user_id)
+    if user:
+        display_name = _clean_display_name(payload.display_name)
+        if display_name is not None:
+            user.display_name = display_name
+        if payload.notifications_enabled is not None:
+            user.notifications_enabled = payload.notifications_enabled
+        if payload.sound_enabled is not None:
+            user.sound_enabled = payload.sound_enabled
+        if payload.chat_requests_enabled is not None:
+            user.chat_requests_enabled = payload.chat_requests_enabled
+        if payload.group_invites_enabled is not None:
+            user.group_invites_enabled = payload.group_invites_enabled
+        user.updated_at = utc_now()
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
+
+    name = _clean_display_name(payload.display_name) or _generate_display_name()
+    user = AnonymousUser(
+        id=user_id,
+        display_name=name,
+        notifications_enabled=payload.notifications_enabled
+        if payload.notifications_enabled is not None
+        else True,
+        sound_enabled=payload.sound_enabled if payload.sound_enabled is not None else True,
+        chat_requests_enabled=payload.chat_requests_enabled
+        if payload.chat_requests_enabled is not None
+        else True,
+        group_invites_enabled=payload.group_invites_enabled
+        if payload.group_invites_enabled is not None
+        else True,
+    )
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -60,11 +111,22 @@ def reset_user_profile(session: Session, user_id: str) -> AnonymousUser:
         session.delete(chat_session)
 
     user.display_name = _generate_display_name()
+    user.notifications_enabled = True
+    user.sound_enabled = True
+    user.chat_requests_enabled = True
+    user.group_invites_enabled = True
     user.updated_at = utc_now()
     session.add(user)
     session.commit()
     session.refresh(user)
     return user
+
+
+def _clean_display_name(display_name: str | None) -> str | None:
+    if display_name is None:
+        return None
+    cleaned = display_name.strip()
+    return cleaned or None
 
 
 def _generate_display_name() -> str:

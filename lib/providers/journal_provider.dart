@@ -1,41 +1,91 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/journal_entry_model.dart';
+import '../repositories/journal_repository.dart';
 
 class JournalProvider with ChangeNotifier {
-  static const _storageKey = 'journal_entries_v1';
+  JournalProvider(this._repository);
 
+  final JournalRepository _repository;
   final List<JournalEntry> _entries = [];
+
+  String? _userId;
+  String? _displayName;
   bool _isLoading = false;
   bool _isInitialized = false;
+  bool _isSyncing = false;
+  String? _syncError;
+  int _bindVersion = 0;
 
   List<JournalEntry> get entries => List.unmodifiable(_entries);
   bool get isLoading => _isLoading;
   bool get isInitialized => _isInitialized;
+  bool get isSyncing => _isSyncing;
+  String? get syncError => _syncError;
   int get totalEntries => _entries.length;
 
-  Future<void> loadEntries() async {
-    if (_isLoading) return;
+  Future<void> bindUser({
+    required String? userId,
+    required String? displayName,
+  }) async {
+    final isSameUser =
+        _userId == userId && _displayName == displayName && _isInitialized;
+    if (isSameUser) return;
 
-    _isLoading = true;
+    final version = ++_bindVersion;
+    _userId = userId;
+    _displayName = displayName;
+    _entries.clear();
+    _syncError = null;
+    _isLoading = userId != null;
+    _isInitialized = userId == null;
+    notifyListeners();
+
+    if (userId == null) {
+      return;
+    }
+
+    final cached = await _repository.loadCachedEntries(userId);
+    if (version != _bindVersion) return;
+
+    _setEntries(cached);
+    _isLoading = false;
+    _isInitialized = true;
+    notifyListeners();
+
+    sync();
+  }
+
+  Future<void> loadEntries() async {
+    await bindUser(userId: _userId, displayName: _displayName);
+  }
+
+  Future<void> sync() async {
+    final userId = _userId;
+    final displayName = _displayName;
+    if (userId == null || displayName == null || _isSyncing) return;
+
+    _isSyncing = true;
+    _syncError = null;
     notifyListeners();
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_storageKey);
-      _entries
-        ..clear()
-        ..addAll(_decodeEntries(raw));
-      _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _isInitialized = true;
-    } catch (e) {
-      debugPrint('Error loading journal entries: $e');
+      final remoteEntries = await _repository.syncEntries(
+        userId: userId,
+        displayName: displayName,
+      );
+      if (userId == _userId) {
+        _setEntries(remoteEntries);
+      }
+    } catch (_) {
+      if (userId == _userId) {
+        _syncError = 'Entries are available locally. Backend sync is offline.';
+      }
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (userId == _userId) {
+        _isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -43,59 +93,75 @@ class JournalProvider with ChangeNotifier {
     required String content,
     String? prompt,
   }) async {
+    final userId = _userId;
+    if (userId == null) return;
+
     final trimmed = content.trim();
     if (trimmed.isEmpty) return;
 
-    final entry = JournalEntry(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      title: _buildTitle(trimmed),
+    final localEntry = await _repository.saveLocalEntry(
+      userId: userId,
       content: trimmed,
       prompt: prompt,
-      createdAt: DateTime.now(),
     );
-
-    _entries.insert(0, entry);
+    _entries.insert(0, localEntry);
     _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    await _persistEntries();
     notifyListeners();
-  }
 
-  Future<void> deleteEntry(String id) async {
-    _entries.removeWhere((entry) => entry.id == id);
-    await _persistEntries();
-    notifyListeners();
-  }
-
-  Future<void> _persistEntries() async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = jsonEncode(
-      _entries.map((entry) => entry.toJson()).toList(),
-    );
-    await prefs.setString(_storageKey, payload);
-  }
-
-  List<JournalEntry> _decodeEntries(String? raw) {
-    if (raw == null || raw.isEmpty) return const <JournalEntry>[];
+    final displayName = _displayName;
+    if (displayName == null) return;
 
     try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return const <JournalEntry>[];
-      return decoded
-          .map((item) => JournalEntry.fromJson(item as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      debugPrint('Error decoding journal entries: $e');
-      return const <JournalEntry>[];
+      final remoteEntry = await _repository.createRemoteEntry(
+        userId: userId,
+        displayName: displayName,
+        content: trimmed,
+        prompt: prompt,
+      );
+      await _repository.replaceEntry(
+        userId: userId,
+        localEntryId: localEntry.id,
+        remoteEntry: remoteEntry,
+      );
+      _replaceEntry(localEntry.id, remoteEntry);
+      _syncError = null;
+      notifyListeners();
+    } catch (_) {
+      _syncError = 'Journal saved locally. Sync will retry later.';
+      notifyListeners();
     }
   }
 
-  String _buildTitle(String content) {
-    final lines = content
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
-    final firstLine = lines.isNotEmpty ? lines.first : content;
-    return firstLine.length > 40 ? '${firstLine.substring(0, 40)}...' : firstLine;
+  Future<void> deleteEntry(String id) async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    _entries.removeWhere((entry) => entry.id == id);
+    await _repository.deleteLocalEntry(userId: userId, entryId: id);
+    notifyListeners();
+
+    try {
+      await _repository.deleteRemoteEntry(id);
+    } catch (_) {
+      _syncError = 'Entry removed locally. Backend cleanup will retry later.';
+      notifyListeners();
+    }
+  }
+
+  void _setEntries(List<JournalEntry> entries) {
+    _entries
+      ..clear()
+      ..addAll(entries);
+    _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  void _replaceEntry(String localId, JournalEntry remoteEntry) {
+    final index = _entries.indexWhere((entry) => entry.id == localId);
+    if (index == -1) {
+      _entries.insert(0, remoteEntry);
+    } else {
+      _entries[index] = remoteEntry;
+    }
+    _entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 }

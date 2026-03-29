@@ -60,7 +60,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     // Join the community channel and load history
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chatProvider = context.read<ChatProvider>();
-      chatProvider.joinCommunity(widget.communityId);
+      chatProvider.openCommunity(widget.communityId);
       chatProvider.clearUnread(widget.communityId);
       _speechService.initialize();
 
@@ -351,12 +351,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
                         );
                       }
                       return Text(
-                        chat.isConnected ? 'Online' : 'Reconnecting...',
+                        chat.isConnected
+                            ? 'Live community'
+                            : chat.connectionState == ws.ConnectionState.reconnecting
+                                ? 'Reconnecting...'
+                                : 'Assistant mode',
                         style: TextStyle(
                           fontSize: 11,
                           color: chat.isConnected
                               ? AppColors.sage
-                              : colorScheme.error,
+                              : chat.connectionState ==
+                                      ws.ConnectionState.reconnecting
+                                  ? colorScheme.error
+                                  : colorScheme.outline,
                         ),
                       );
                     },
@@ -404,6 +411,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
                         ),
                       ),
                     ],
+                  ),
+                );
+              }
+              if (chat.isAssistantFallbackMode) {
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  color: colorScheme.secondaryContainer.withValues(alpha: 0.45),
+                  child: const Text(
+                    'Realtime peer chat is unavailable right now. You can still keep going with the assistant and any saved message history.',
+                    style: TextStyle(fontSize: 12),
                   ),
                 );
               }

@@ -6,6 +6,10 @@ class AnonymousIdService {
   static const String _anonymousIdKey = 'anonymous_id';
   static const String _displayNameKey = 'display_name';
   static const String _createdAtKey = 'created_at';
+  static const String _notificationsEnabledKey = 'notifications_enabled';
+  static const String _soundEnabledKey = 'sound_enabled';
+  static const String _chatRequestsEnabledKey = 'chat_requests_enabled';
+  static const String _groupInvitesEnabledKey = 'group_invites_enabled';
 
   final SharedPreferences _prefs;
   final Uuid _uuid = const Uuid();
@@ -29,6 +33,7 @@ class AnonymousIdService {
       // Generate random display name
       final displayName = _generateDisplayName();
       await _prefs.setString(_displayNameKey, displayName);
+      await _saveDefaultSettings();
     }
 
     return anonymousId;
@@ -48,6 +53,31 @@ class AnonymousIdService {
       anonymousId: anonymousId,
       displayName: displayName,
       createdAt: createdAt,
+      notificationsEnabled: _prefs.getBool(_notificationsEnabledKey) ?? true,
+      soundEnabled: _prefs.getBool(_soundEnabledKey) ?? true,
+      chatRequestsEnabled:
+          _prefs.getBool(_chatRequestsEnabledKey) ?? true,
+      groupInvitesEnabled:
+          _prefs.getBool(_groupInvitesEnabledKey) ?? true,
+    );
+  }
+
+  Future<void> saveCurrentUser(AnonymousUser user) async {
+    await _prefs.setString(_anonymousIdKey, user.anonymousId);
+    await _prefs.setString(_displayNameKey, user.displayName);
+    await _prefs.setString(_createdAtKey, user.createdAt.toIso8601String());
+    await _prefs.setBool(
+      _notificationsEnabledKey,
+      user.notificationsEnabled,
+    );
+    await _prefs.setBool(_soundEnabledKey, user.soundEnabled);
+    await _prefs.setBool(
+      _chatRequestsEnabledKey,
+      user.chatRequestsEnabled,
+    );
+    await _prefs.setBool(
+      _groupInvitesEnabledKey,
+      user.groupInvitesEnabled,
     );
   }
 
@@ -62,6 +92,13 @@ class AnonymousIdService {
       'anonymousId': anonymousId,
       'displayName': displayName,
       'createdAt': createdAt,
+      'notificationsEnabled':
+          (_prefs.getBool(_notificationsEnabledKey) ?? true).toString(),
+      'soundEnabled': (_prefs.getBool(_soundEnabledKey) ?? true).toString(),
+      'chatRequestsEnabled':
+          (_prefs.getBool(_chatRequestsEnabledKey) ?? true).toString(),
+      'groupInvitesEnabled':
+          (_prefs.getBool(_groupInvitesEnabledKey) ?? true).toString(),
     };
   }
 
@@ -70,6 +107,22 @@ class AnonymousIdService {
     await _prefs.setString(_anonymousIdKey, profileData['anonymousId']!);
     await _prefs.setString(_displayNameKey, profileData['displayName']!);
     await _prefs.setString(_createdAtKey, profileData['createdAt']!);
+    await _prefs.setBool(
+      _notificationsEnabledKey,
+      _parseBool(profileData['notificationsEnabled'], fallback: true),
+    );
+    await _prefs.setBool(
+      _soundEnabledKey,
+      _parseBool(profileData['soundEnabled'], fallback: true),
+    );
+    await _prefs.setBool(
+      _chatRequestsEnabledKey,
+      _parseBool(profileData['chatRequestsEnabled'], fallback: true),
+    );
+    await _prefs.setBool(
+      _groupInvitesEnabledKey,
+      _parseBool(profileData['groupInvitesEnabled'], fallback: true),
+    );
   }
 
   /// Clear all data (start fresh)
@@ -77,6 +130,10 @@ class AnonymousIdService {
     await _prefs.remove(_anonymousIdKey);
     await _prefs.remove(_displayNameKey);
     await _prefs.remove(_createdAtKey);
+    await _prefs.remove(_notificationsEnabledKey);
+    await _prefs.remove(_soundEnabledKey);
+    await _prefs.remove(_chatRequestsEnabledKey);
+    await _prefs.remove(_groupInvitesEnabledKey);
   }
 
   /// Generate random anonymous display name
@@ -115,5 +172,20 @@ class AnonymousIdService {
     final animal = animals[(random ~/ 1000) % animals.length];
 
     return 'Anonymous $adjective $animal';
+  }
+
+  Future<void> _saveDefaultSettings() async {
+    await _prefs.setBool(_notificationsEnabledKey, true);
+    await _prefs.setBool(_soundEnabledKey, true);
+    await _prefs.setBool(_chatRequestsEnabledKey, true);
+    await _prefs.setBool(_groupInvitesEnabledKey, true);
+  }
+
+  bool _parseBool(String? raw, {required bool fallback}) {
+    if (raw == null) return fallback;
+    final normalized = raw.trim().toLowerCase();
+    if (normalized == 'true') return true;
+    if (normalized == 'false') return false;
+    return fallback;
   }
 }

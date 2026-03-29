@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../models/journal_entry_model.dart';
+import '../models/mood_entry_model.dart';
 import '../models/post_model.dart';
 import '../models/session_model.dart';
 import '../models/message_model.dart';
+import '../models/user_model.dart';
 
 class ApiService {
   final String baseUrl;
@@ -56,6 +59,118 @@ class ApiService {
           response.statusCode,
         );
       }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  //  Anonymous User Bootstrap
+  // ═══════════════════════════════════════════════
+
+  Future<AnonymousUser> ensureAnonymousUserExists({
+    required String userId,
+    required String displayName,
+  }) async {
+    return upsertUserProfile(
+      userId: userId,
+      displayName: displayName,
+    );
+  }
+
+  Future<AnonymousUser> getUserProfile({
+    required String userId,
+  }) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/users/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return AnonymousUser.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+
+      throw ApiException(
+        'Failed to fetch user profile: ${response.statusCode}',
+        response.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  Future<AnonymousUser> upsertUserProfile({
+    required String userId,
+    String? displayName,
+    bool? notificationsEnabled,
+    bool? soundEnabled,
+    bool? chatRequestsEnabled,
+    bool? groupInvitesEnabled,
+  }) async {
+    try {
+      final payload = <String, dynamic>{};
+      if (displayName != null) {
+        payload['display_name'] = displayName.trim();
+      }
+      if (notificationsEnabled != null) {
+        payload['notifications_enabled'] = notificationsEnabled;
+      }
+      if (soundEnabled != null) {
+        payload['sound_enabled'] = soundEnabled;
+      }
+      if (chatRequestsEnabled != null) {
+        payload['chat_requests_enabled'] = chatRequestsEnabled;
+      }
+      if (groupInvitesEnabled != null) {
+        payload['group_invites_enabled'] = groupInvitesEnabled;
+      }
+
+      final response = await _client.put(
+        Uri.parse('$baseUrl/users/$userId'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AnonymousUser.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+
+      throw ApiException(
+        'Failed to save user profile: ${response.statusCode}',
+        response.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  Future<AnonymousUser> resetUserProfile({
+    required String userId,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/users/$userId/reset'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AnonymousUser.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+
+      throw ApiException(
+        'Failed to reset user profile: ${response.statusCode}',
+        response.statusCode,
+      );
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException('Network error: $e', 0);
@@ -158,35 +273,184 @@ class ApiService {
 
   /// Get messages for a community (GET /communities/{communityId}/messages)
   Future<List<Message>> getCommunityMessages(String communityId) async {
+    final candidates = [
+      Uri.parse('$baseUrl/communities/$communityId/messages'),
+      Uri.parse('$baseUrl/sessions/$communityId/messages'),
+    ];
+
+    for (final uri in candidates) {
+      try {
+        final response = await _client.get(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+        );
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          List messagesList;
+          if (data is List) {
+            messagesList = data;
+          } else if (data is Map && data['messages'] != null) {
+            messagesList = data['messages'] as List;
+          } else {
+            return [];
+          }
+          return messagesList
+              .map((m) => Message.fromJson(m as Map<String, dynamic>))
+              .toList();
+        }
+      } catch (e) {
+        debugPrint('Error fetching messages from $uri: $e');
+      }
+    }
+
+    return [];
+  }
+
+  // ═══════════════════════════════════════════════
+  //  Mood Tracking
+  // ═══════════════════════════════════════════════
+
+  Future<List<MoodEntry>> listMoodEntries({
+    required String userId,
+  }) async {
     try {
       final response = await _client.get(
-        Uri.parse('$baseUrl/communities/$communityId/messages'),
+        Uri.parse('$baseUrl/users/$userId/moods'),
         headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        List messagesList;
-        if (data is List) {
-          messagesList = data;
-        } else if (data is Map && data['messages'] != null) {
-          messagesList = data['messages'] as List;
-        } else {
-          return [];
-        }
-        return messagesList
-            .map((m) => Message.fromJson(m as Map<String, dynamic>))
+        if (data is! List) return const <MoodEntry>[];
+        return data
+            .map((item) => MoodEntry.fromJson(item as Map<String, dynamic>))
             .toList();
-      } else {
+      }
+
+      throw ApiException(
+        'Failed to fetch mood entries: ${response.statusCode}',
+        response.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  Future<MoodEntry> createMoodEntry({
+    required String userId,
+    required int moodLevel,
+    required String note,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/users/$userId/moods'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'mood_level': moodLevel,
+          'note': note.trim(),
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        return MoodEntry.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+
+      throw ApiException(
+        'Failed to create mood entry: ${response.statusCode}',
+        response.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  //  Journaling
+  // ═══════════════════════════════════════════════
+
+  Future<List<JournalEntry>> listJournalEntries({
+    required String userId,
+  }) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/users/$userId/journals'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is! List) return const <JournalEntry>[];
+        return data
+            .map((item) => JournalEntry.fromJson(item as Map<String, dynamic>))
+            .toList();
+      }
+
+      throw ApiException(
+        'Failed to fetch journal entries: ${response.statusCode}',
+        response.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  Future<JournalEntry> createJournalEntry({
+    required String userId,
+    required String title,
+    required String content,
+    String? prompt,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/users/$userId/journals'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'title': title,
+          'content': content.trim(),
+          'prompt': prompt,
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        return JournalEntry.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+
+      throw ApiException(
+        'Failed to create journal entry: ${response.statusCode}',
+        response.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Network error: $e', 0);
+    }
+  }
+
+  Future<void> deleteJournalEntry({
+    required String journalId,
+  }) async {
+    try {
+      final response = await _client.delete(
+        Uri.parse('$baseUrl/journals/$journalId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 204 && response.statusCode != 404) {
         throw ApiException(
-          'Failed to fetch messages: ${response.statusCode}',
+          'Failed to delete journal entry: ${response.statusCode}',
           response.statusCode,
         );
       }
     } catch (e) {
       if (e is ApiException) rethrow;
-      debugPrint('Error fetching messages: $e');
-      return [];
+      throw ApiException('Network error: $e', 0);
     }
   }
 
@@ -380,6 +644,35 @@ class ApiService {
       debugPrint('Error fetching messages: $e');
       return [];
     }
+  }
+
+  Future<Message?> createSessionMessage({
+    required String sessionId,
+    required String senderId,
+    required String senderName,
+    required String content,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/sessions/$sessionId/messages'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'senderId': senderId,
+          'senderName': senderName,
+          'content': content,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Message.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error creating session message: $e');
+    }
+
+    return null;
   }
 
   Future<void> sendChatRequest({

@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
 from app.models import ChatSession, Message
-from app.models.common import MessageStatus, utc_now
+from app.models.common import MessageStatus, SessionType, utc_now
 from app.schemas.chat import ChatSessionCreate, MessageCreate
 from app.services.users import get_or_create_user, get_user_or_404
 
