@@ -113,6 +113,44 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
     'relationships': ['partner', 'breakup', 'relationship', 'friend'],
   };
 
+  static const _studentTerms = [
+    'student',
+    'study',
+    'studying',
+    'exam',
+    'class',
+    'college',
+    'school',
+    'university',
+    'campus',
+    'semester',
+    'assignment',
+    'homework',
+  ];
+
+  static const _professionalTerms = [
+    'work',
+    'job',
+    'office',
+    'manager',
+    'coworker',
+    'career',
+    'meeting',
+    'client',
+    'shift',
+    'corporate',
+  ];
+
+  static const _caregiverTerms = [
+    'caregiver',
+    'taking care of',
+    'my kids',
+    'my child',
+    'new mom',
+    'new dad',
+    'parenting',
+  ];
+
   @override
   Future<EmotionalAnalysisResult> analyze(
     EmotionalAnalysisRequest request,
@@ -124,6 +162,7 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
     final highIntensityMatches = _countMatches(normalized, _highIntensityTerms);
 
     final themes = _extractThemes(normalized);
+    final userCategorySignal = _inferUserCategory(normalized);
     final score =
         ((positiveMatches * 0.35) -
                 (heavyMoodMatches * 0.42) -
@@ -159,25 +198,61 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
       _ => 'LOW',
     };
 
+    final supportNeedLevel = _deriveSupportNeedLevel(
+      riskLevel: riskLevel,
+      intensity: intensity,
+      moodDirection: moodDirection,
+    );
+    final supportCategory = _deriveSupportCategory(
+      userCategory: userCategorySignal.category,
+      themes: themes,
+      riskLevel: riskLevel,
+    );
+    final sentimentLabel = _deriveSentimentLabel(
+      riskLevel: riskLevel,
+      score: score,
+      moodDirection: moodDirection,
+      intensity: intensity,
+    );
+    final routingTags = <String>{
+      ...themes,
+      ...emotionalLabels.map((label) => label.toLowerCase()),
+      supportCategory.label.toLowerCase(),
+      if (userCategorySignal.category != UserCategory.unspecified)
+        userCategorySignal.category.label.toLowerCase(),
+    }.toList();
+
     return EmotionalAnalysisResult(
+      originalText: request.submission.content,
+      sentimentLabel: sentimentLabel,
       emotionalLabels: emotionalLabels,
       moodDirection: moodDirection,
       sentimentScore: score,
       intensity: intensity,
       intensityLabel: _intensityLabel(intensity),
       riskLevel: riskLevel,
+      supportNeedLevel: supportNeedLevel,
+      supportCategory: supportCategory,
+      userCategory: userCategorySignal.category,
+      userCategoryEvidence: userCategorySignal.evidence,
       themes: themes.take(5).toList(),
+      routingTags: routingTags,
       supportRecommendations: _buildSupportRecommendations(
         moodDirection: moodDirection,
         intensity: intensity,
         themes: themes,
         riskLevel: riskLevel,
+        supportCategory: supportCategory,
+        userCategory: userCategorySignal.category,
       ),
       summary: _buildSummary(
+        sentimentLabel: sentimentLabel,
         moodDirection: moodDirection,
         intensity: intensity,
         themes: themes,
         inputMode: request.submission.inputMode,
+        supportCategory: supportCategory,
+        userCategory: userCategorySignal.category,
       ),
       source: 'local-heuristic-analyzer',
       usedFallback: true,
@@ -251,6 +326,8 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
     required int intensity,
     required List<String> themes,
     required String riskLevel,
+    required SupportCategory supportCategory,
+    required UserCategory userCategory,
   }) {
     final recommendations = <String>[
       if (themes.contains('academic pressure'))
@@ -261,6 +338,10 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
         'A low-stimulation wind-down can help before the next check-in tonight.',
       if (themes.contains('connection'))
         'A live group or one supportive peer may feel better than sitting with this alone.',
+      if (supportCategory == SupportCategory.burnoutSupport)
+        'Aim for spaces that understand work fatigue instead of generic advice.',
+      if (userCategory == UserCategory.under18)
+        'We will route you toward youth-safe spaces before direct peer matching.',
     ];
 
     if (riskLevel == 'HIGH') {
@@ -289,10 +370,13 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
   }
 
   String _buildSummary({
+    required String sentimentLabel,
     required MoodDirection moodDirection,
     required int intensity,
     required List<String> themes,
     required CheckInInputMode inputMode,
+    required SupportCategory supportCategory,
+    required UserCategory userCategory,
   }) {
     final opener = switch (moodDirection) {
       MoodDirection.upward =>
@@ -307,15 +391,21 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
         ? 'Because this came through voice, preserving your exact phrasing may help matching feel more human.'
         : 'The written detail gives us helpful signal for matching you to the right kind of support.';
 
+    final identityNote = userCategory == UserCategory.unspecified
+        ? ''
+        : ' We picked a ${userCategory.label.toLowerCase()}-aware route.';
     final themeNote = themes.isEmpty
         ? ''
         : ' Main themes: ${themes.take(3).join(', ')}.';
+    final routeNote =
+        ' Suggested path: ${supportCategory.label.toLowerCase()}.';
 
     final intensityNote = intensity >= 4
         ? ' Emotional intensity looks high, so recommendations should stay calm and immediate.'
         : '';
 
-    return '$opener$themeNote $channelNote$intensityNote'.trim();
+    return '$opener $sentimentLabel tone detected.$themeNote $channelNote$identityNote$routeNote$intensityNote'
+        .trim();
   }
 
   String _intensityLabel(int intensity) {
@@ -332,6 +422,129 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
     }
     return 'Moderate';
   }
+
+  _UserCategorySignal _inferUserCategory(String normalized) {
+    final ageMatch = RegExp(
+      r"\b(?:i am|i'm|im)\s*(1[3-7])\b|\b(1[3-7])\s*(?:years old|year old|yo)\b|\bunder 18\b|\bminor\b|\bteenager\b",
+    ).firstMatch(normalized);
+    if (ageMatch != null) {
+      return _UserCategorySignal(
+        category: UserCategory.under18,
+        evidence: ageMatch.group(0),
+      );
+    }
+
+    final studentMatch = _studentTerms.firstWhere(
+      normalized.contains,
+      orElse: () => '',
+    );
+    if (studentMatch.isNotEmpty) {
+      return _UserCategorySignal(
+        category: UserCategory.student,
+        evidence: studentMatch,
+      );
+    }
+
+    final professionalMatch = _professionalTerms.firstWhere(
+      normalized.contains,
+      orElse: () => '',
+    );
+    if (professionalMatch.isNotEmpty) {
+      return _UserCategorySignal(
+        category: UserCategory.professional,
+        evidence: professionalMatch,
+      );
+    }
+
+    final caregiverMatch = _caregiverTerms.firstWhere(
+      normalized.contains,
+      orElse: () => '',
+    );
+    if (caregiverMatch.isNotEmpty) {
+      return _UserCategorySignal(
+        category: UserCategory.caregiver,
+        evidence: caregiverMatch,
+      );
+    }
+
+    return const _UserCategorySignal(category: UserCategory.unspecified);
+  }
+
+  SupportNeedLevel _deriveSupportNeedLevel({
+    required String riskLevel,
+    required int intensity,
+    required MoodDirection moodDirection,
+  }) {
+    if (riskLevel == 'HIGH') return SupportNeedLevel.urgent;
+    if (riskLevel == 'MEDIUM' || intensity >= 4) {
+      return SupportNeedLevel.high;
+    }
+    if (moodDirection == MoodDirection.downward || intensity >= 3) {
+      return SupportNeedLevel.medium;
+    }
+    return SupportNeedLevel.low;
+  }
+
+  SupportCategory _deriveSupportCategory({
+    required UserCategory userCategory,
+    required List<String> themes,
+    required String riskLevel,
+  }) {
+    if (riskLevel == 'HIGH') return SupportCategory.crisisSupport;
+    if (userCategory == UserCategory.under18) {
+      return SupportCategory.youthSupport;
+    }
+    if (themes.contains('academic pressure')) {
+      return SupportCategory.academicStress;
+    }
+    if (themes.contains('burnout') ||
+        userCategory == UserCategory.professional) {
+      return SupportCategory.burnoutSupport;
+    }
+    if (themes.contains('family stress')) {
+      return SupportCategory.familySupport;
+    }
+    if (themes.contains('grief')) {
+      return SupportCategory.griefSupport;
+    }
+    if (themes.contains('sleep disruption')) {
+      return SupportCategory.sleepSupport;
+    }
+    if (themes.contains('social anxiety')) {
+      return SupportCategory.socialSupport;
+    }
+    if (themes.contains('self-worth')) {
+      return SupportCategory.selfWorthSupport;
+    }
+    if (themes.contains('relationships') || themes.contains('connection')) {
+      return SupportCategory.peerSupport;
+    }
+    return SupportCategory.generalSupport;
+  }
+
+  String _deriveSentimentLabel({
+    required String riskLevel,
+    required double score,
+    required MoodDirection moodDirection,
+    required int intensity,
+  }) {
+    if (riskLevel == 'HIGH') return 'Distressed';
+    if (score >= 0.35) return 'Positive';
+    if (moodDirection == MoodDirection.downward || intensity >= 4) {
+      return 'Heavy';
+    }
+    return 'Mixed';
+  }
+}
+
+class _UserCategorySignal {
+  final UserCategory category;
+  final String? evidence;
+
+  const _UserCategorySignal({
+    required this.category,
+    this.evidence,
+  });
 }
 
 class BedrockEmotionalAnalysisAdapter implements EmotionalAnalysisAdapter {

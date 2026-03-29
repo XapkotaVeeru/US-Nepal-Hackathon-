@@ -31,6 +31,7 @@ class Message {
         case 'system':
           return MessageType.system;
         case 'matchNotification':
+        case 'match_notification':
           return MessageType.matchNotification;
         case 'assistant':
           return MessageType.assistant;
@@ -56,14 +57,23 @@ class Message {
 
     return Message(
       id: json['id'] as String? ?? '',
-      sessionId: (json['sessionId'] ?? json['communityId']) as String? ?? '',
-      senderId: json['senderId'] as String? ?? '',
-      senderName: json['senderName'] as String? ?? 'Anonymous',
+      sessionId:
+          (json['sessionId'] ?? json['session_id'] ?? json['communityId'])
+                  as String? ??
+              '',
+      senderId: (json['senderId'] ?? json['sender_id']) as String? ?? '',
+      senderName:
+          (json['senderName'] ?? json['sender_name']) as String? ?? 'Anonymous',
       content: json['content'] as String? ?? '',
-      timestamp: json['timestamp'] != null
-          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+      timestamp:
+          (json['timestamp'] ?? json['created_at'] ?? json['createdAt']) != null
+          ? DateTime.tryParse(
+                  (json['timestamp'] ?? json['created_at'] ?? json['createdAt'])
+                      .toString(),
+                ) ??
+                DateTime.now()
           : DateTime.now(),
-      isRead: json['isRead'] as bool? ?? false,
+      isRead: (json['isRead'] ?? json['is_read']) as bool? ?? false,
       type: parseType(json['type'] as String?),
       status: parseStatus(json['status'] as String?),
     );

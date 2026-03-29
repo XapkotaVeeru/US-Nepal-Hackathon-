@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/check_in_model.dart';
 import '../providers/post_provider.dart';
 import '../services/speech_service.dart';
 
@@ -26,8 +27,14 @@ class _CreatePostCardState extends State<CreatePostCard> {
   bool _consentGiven = false;
   bool _showGuidelines = true;
   bool _isListening = false;
-  String _baseTextBeforeListening = '';
   String? _voiceError;
+  CheckInInputMode _inputMode = CheckInInputMode.text;
+
+  @override
+  void initState() {
+    super.initState();
+    _speechService.initialize();
+  }
 
   @override
   void dispose() {
@@ -37,65 +44,88 @@ class _CreatePostCardState extends State<CreatePostCard> {
     super.dispose();
   }
 
-  int get _characterCount => _controller.text.length;
+  int get _characterCount => _controller.text.trim().length;
 
   bool get _isValid =>
       _characterCount >= 20 && _characterCount <= 2000 && _consentGiven;
 
-  void _setComposerText(String text) {
-    _controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-
-  Future<void> _toggleVoiceInput() async {
-    if (widget.isSubmitting) return;
-
-    if (_isListening) {
-      await _stopVoiceInput();
-    } else {
-      await _startVoiceInput();
-    }
-  }
-
-  Future<void> _startVoiceInput() async {
+  Future<void> _startVoiceCapture() async {
     final initialized = await _speechService.initialize();
     if (!initialized) {
+      if (!mounted) return;
       setState(() {
         _voiceError = 'Speech recognition is not available on this device.';
       });
       return;
     }
 
-    _baseTextBeforeListening = _controller.text.trimRight();
     setState(() {
+      _inputMode = CheckInInputMode.voice;
       _isListening = true;
       _voiceError = null;
+      _controller.clear();
     });
 
     await _speechService.startListening(
       onResult: (transcript) {
         if (!mounted) return;
-
-        final mergedText = _baseTextBeforeListening.isEmpty
-            ? transcript.trimLeft()
-            : '${_baseTextBeforeListening.trimRight()} ${transcript.trimLeft()}';
-
-        _setComposerText(mergedText.trim());
-        setState(() {});
+        setState(() {
+          _controller.text = transcript;
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+        });
       },
     );
   }
 
-  Future<void> _stopVoiceInput() async {
+  Future<void> _stopVoiceCapture() async {
     final transcript = await _speechService.stopListening();
     if (!mounted) return;
-
     setState(() {
       _isListening = false;
-      _voiceError =
-          transcript.trim().isEmpty ? 'Could not capture speech. Try again.' : null;
+      if (transcript.trim().isEmpty) {
+        _voiceError =
+            'Could not capture speech. Try again and speak at your normal pace.';
+      } else {
+        _voiceError = null;
+        _controller.text = transcript.trim();
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length),
+        );
+      }
+    });
+  }
+
+  Future<void> _stopVoiceCaptureSilently() async {
+    if (!_isListening) return;
+    await _speechService.stopListening();
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+    });
+  }
+
+  Future<void> _restartVoiceCapture() async {
+    if (_isListening) {
+      await _stopVoiceCaptureSilently();
+    }
+    if (!mounted) return;
+    setState(() {
+      _controller.clear();
+      _voiceError = null;
+    });
+    await _startVoiceCapture();
+  }
+
+  Future<void> _clearFeelingInput() async {
+    if (_isListening) {
+      await _stopVoiceCaptureSilently();
+    }
+    if (!mounted) return;
+    setState(() {
+      _controller.clear();
+      _voiceError = null;
     });
   }
 
@@ -104,16 +134,23 @@ class _CreatePostCardState extends State<CreatePostCard> {
 
     _focusNode.unfocus();
 
-    final postProvider = context.read<PostProvider>();
-    postProvider.submitPost(
-      anonymousId: widget.anonymousId,
-      content: _controller.text,
-    );
+    context.read<PostProvider>().submitPost(
+          anonymousId: widget.anonymousId,
+          content: _controller.text,
+          inputMode: _inputMode,
+          captureSource: _inputMode == CheckInInputMode.voice
+              ? 'speech_to_text'
+              : 'typed',
+          transcript:
+              _inputMode == CheckInInputMode.voice ? _controller.text : null,
+        );
 
     _controller.clear();
     setState(() {
       _consentGiven = false;
+      _isListening = false;
       _voiceError = null;
+      _inputMode = CheckInInputMode.text;
     });
   }
 
@@ -159,10 +196,10 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'This is peer support, not professional therapy.\n'
-                    'Your information is anonymous and private.\n'
-                    'We match your feelings to find similar experiences.\n'
-                    'If you are in crisis, we will show emergency resources.',
+                    '• This is peer support, not professional therapy\n'
+                    '• Your check-in stays anonymous\n'
+                    '• We analyze emotions, intensity, and themes to find better support\n'
+                    '• If risk looks elevated, we surface safer next steps first',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: colorScheme.onPrimaryContainer,
                         ),
@@ -184,47 +221,43 @@ class _CreatePostCardState extends State<CreatePostCard> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Share your thoughts and feelings. We\'ll help you connect with others who understand.',
+                  'Use text or voice. We\'ll run one emotional check-in flow and suggest people and communities that fit what you shared.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _isListening
-                            ? 'Listening... tap the mic again to stop.'
-                            : 'Tap the microphone to transcribe into the field.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: _isListening
-                                  ? colorScheme.primary
-                                  : colorScheme.outline,
-                            ),
-                      ),
+                const SizedBox(height: 16),
+                SegmentedButton<CheckInInputMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: CheckInInputMode.text,
+                      icon: Icon(Icons.keyboard_alt_outlined),
+                      label: Text('Text'),
                     ),
-                    const SizedBox(width: 12),
-                    IconButton.filledTonal(
-                      onPressed: _toggleVoiceInput,
-                      icon: Icon(
-                        _isListening ? Icons.stop_rounded : Icons.mic_rounded,
-                      ),
-                      tooltip:
-                          _isListening ? 'Stop voice input' : 'Start voice input',
+                    ButtonSegment(
+                      value: CheckInInputMode.voice,
+                      icon: Icon(Icons.mic_none_rounded),
+                      label: Text('Voice'),
                     ),
                   ],
+                  selected: {_inputMode},
+                  onSelectionChanged: widget.isSubmitting
+                      ? null
+                      : (selection) {
+                          final nextMode = selection.first;
+                          if (nextMode == CheckInInputMode.text &&
+                              _isListening) {
+                            _stopVoiceCaptureSilently();
+                          }
+                          setState(() {
+                            _inputMode = nextMode;
+                            _voiceError = null;
+                          });
+                        },
                 ),
-                if (_voiceError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _voiceError!,
-                    style: TextStyle(
-                      color: colorScheme.error,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 16),
+                if (_inputMode == CheckInInputMode.voice) ...[
+                  _buildVoiceCapturePanel(context),
+                  const SizedBox(height: 14),
+                ],
                 TextField(
                   controller: _controller,
                   focusNode: _focusNode,
@@ -234,8 +267,12 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   enabled: !widget.isSubmitting,
                   textInputAction: TextInputAction.newline,
                   decoration: InputDecoration(
-                    hintText:
-                        'I feel overwhelmed with studies and don\'t know how to handle the pressure...',
+                    labelText: _inputMode == CheckInInputMode.voice
+                        ? 'Transcript / editable check-in'
+                        : 'Text check-in',
+                    hintText: _inputMode == CheckInInputMode.voice
+                        ? 'Press start recording, speak naturally, and watch your words appear here while we transcribe...'
+                        : 'I feel overwhelmed with studies and don\'t know how to handle the pressure...',
                     hintStyle: TextStyle(
                       color: colorScheme.onSurface.withValues(alpha: 0.35),
                       fontSize: 14,
@@ -270,6 +307,28 @@ class _CreatePostCardState extends State<CreatePostCard> {
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
+                if (_controller.text.trim().isNotEmpty ||
+                    (_inputMode == CheckInInputMode.voice && !_isListening)) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed:
+                            widget.isSubmitting ? null : _clearFeelingInput,
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        label: const Text('Clear'),
+                      ),
+                      if (_inputMode == CheckInInputMode.voice) ...[
+                        const SizedBox(width: 6),
+                        TextButton.icon(
+                          onPressed: widget.isSubmitting ? null : _restartVoiceCapture,
+                          icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                          label: const Text('Re-record'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 GestureDetector(
                   onTap: widget.isSubmitting
@@ -304,7 +363,9 @@ class _CreatePostCardState extends State<CreatePostCard> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'I understand my text will be used by AI to find support',
+                              _inputMode == CheckInInputMode.voice
+                                  ? 'I understand my voice transcript will be used to analyze emotions and match support'
+                                  : 'I understand my text will be used to analyze emotions and match support',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyMedium
@@ -315,7 +376,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Your data is anonymous and used only for matching',
+                              'We use your anonymous check-in to generate emotion labels, intensity, tags, and support recommendations.',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
@@ -343,9 +404,15 @@ class _CreatePostCardState extends State<CreatePostCard> {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.send_rounded),
+                      : Icon(
+                          _inputMode == CheckInInputMode.voice
+                              ? Icons.graphic_eq_rounded
+                              : Icons.send_rounded,
+                        ),
                   label: Text(
-                    widget.isSubmitting ? 'Analyzing...' : 'Share & Find Support',
+                    widget.isSubmitting
+                        ? 'Understanding your check-in...'
+                        : 'Share and Find Support',
                   ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -359,12 +426,12 @@ class _CreatePostCardState extends State<CreatePostCard> {
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       _characterCount < 20
-                          ? 'Write at least 20 characters to share'
+                          ? 'Share at least 20 characters so we can understand your check-in'
                           : !_consentGiven
-                              ? 'Please check the consent box above'
+                              ? 'Please confirm consent above'
                               : '',
                       style: TextStyle(
-                        color: colorScheme.error.withValues(alpha: 0.7),
+                        color: colorScheme.error.withValues(alpha: 0.75),
                         fontSize: 12,
                       ),
                       textAlign: TextAlign.center,
@@ -375,6 +442,135 @@ class _CreatePostCardState extends State<CreatePostCard> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildVoiceCapturePanel(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.16),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isListening
+                      ? colorScheme.primary
+                      : colorScheme.primaryContainer,
+                ),
+                child: Icon(
+                  _isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded,
+                  color: _isListening
+                      ? Colors.white
+                      : colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isListening ? 'Recording and transcribing...' : 'Voice check-in',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _isListening
+                          ? 'Speak at your normal pace. We will keep translating your voice into text until you press stop.'
+                          : 'Press start recording and speak naturally. You do not need to talk fast, and you can review the transcript before sharing.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.outline,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (_isListening) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Live transcript is on. Keep talking, pause when you need to, and press stop when you are done.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: widget.isSubmitting || _isListening
+                      ? null
+                      : _startVoiceCapture,
+                  icon: const Icon(Icons.mic),
+                  label: const Text('Start recording'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: widget.isSubmitting || !_isListening
+                      ? null
+                      : _stopVoiceCapture,
+                  icon: const Icon(Icons.stop_circle_outlined),
+                  label: const Text('Stop recording'),
+                ),
+              ),
+            ],
+          ),
+          if (_voiceError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _voiceError!,
+              style: TextStyle(
+                color: colorScheme.error,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

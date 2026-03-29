@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -354,6 +356,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _messageController = TextEditingController();
   bool _showStarters = true;
   final List<Map<String, dynamic>> _messages = [];
+  Timer? _replyTimer;
 
   @override
   void initState() {
@@ -374,6 +377,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   void dispose() {
+    _replyTimer?.cancel();
     _messageController.dispose();
     super.dispose();
   }
@@ -389,6 +393,70 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _messageController.clear();
       _showStarters = false;
     });
+    _scheduleReply(text);
+  }
+
+  void _scheduleReply(String text) {
+    _replyTimer?.cancel();
+    _replyTimer = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      final reply = _buildReply(text);
+      setState(() {
+        _messages.add(reply);
+      });
+    });
+  }
+
+  Map<String, dynamic> _buildReply(String text) {
+    final normalized = text.toLowerCase();
+    final replyText = widget.chat.isGroup
+        ? _groupReply(normalized)
+        : _peerReply(normalized);
+    return {
+      'text': replyText,
+      'isMe': false,
+      'time': 'Now',
+      'author': widget.chat.isGroup ? _groupResponderName() : widget.chat.name,
+    };
+  }
+
+  String _peerReply(String normalized) {
+    if (normalized.contains('stress') || normalized.contains('overwhelmed')) {
+      return 'I hear that. What part is hitting you hardest right now so we can slow it down together?';
+    }
+    if (normalized.contains('lonely') || normalized.contains('alone')) {
+      return 'I’m really glad you answered back. You don’t have to carry that alone in this chat.';
+    }
+    if (normalized.contains('work') || normalized.contains('job')) {
+      return 'That sounds draining. Was it the workload, people, or pressure that got to you most today?';
+    }
+    if (normalized.contains('study') || normalized.contains('exam')) {
+      return 'That makes sense. If you want, tell me which class or deadline feels biggest.';
+    }
+    return 'Thanks for sharing that. I’m here with you, and I’d like to understand a little more.';
+  }
+
+  String _groupReply(String normalized) {
+    if (normalized.contains('stress') || normalized.contains('burnout')) {
+      return 'A few of us relate to that. You can name the part that feels heaviest and this room will usually meet you there.';
+    }
+    if (normalized.contains('lonely') || normalized.contains('alone')) {
+      return 'You’re in good company here tonight. A lot of people join this room when they need someone to answer back.';
+    }
+    if (normalized.contains('sleep') || normalized.contains('night')) {
+      return 'Late hours can make everything louder. You can stay specific here about what is keeping your mind awake.';
+    }
+    return 'Thank you for dropping that in here. Someone in this room will probably relate more than you expect.';
+  }
+
+  String _groupResponderName() {
+    final names = [
+      'Anonymous Finch',
+      'Anonymous Willow',
+      'Anonymous Ember',
+      'Anonymous Lark',
+    ];
+    return names[_messages.length % names.length];
   }
 
   @override

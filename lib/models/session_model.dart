@@ -22,18 +22,27 @@ class ChatSession {
   });
 
   factory ChatSession.fromJson(Map<String, dynamic> json) {
+    final participantIds =
+        (json['participantIds'] ?? json['participant_ids']) as List? ?? const [];
+    final createdAt = json['createdAt'] ?? json['created_at'];
+    final lastMessageTime = json['lastMessageTime'] ?? json['last_message_time'];
+    final unreadCount = json['unreadCount'] ?? json['unread_count'];
+    final isActive = json['isActive'] ?? json['is_active'];
+
     return ChatSession(
-      id: json['id'] as String,
-      type: json['type'] as String,
-      name: json['name'] as String,
-      participantIds: List<String>.from(json['participantIds'] as List),
-      lastMessage: json['lastMessage'] as String?,
-      lastMessageTime: json['lastMessageTime'] != null
-          ? DateTime.parse(json['lastMessageTime'] as String)
+      id: json['id'] as String? ?? '',
+      type: json['type'] as String? ?? 'group',
+      name: json['name'] as String? ?? 'Support Chat',
+      participantIds: participantIds.map((item) => item.toString()).toList(),
+      lastMessage: (json['lastMessage'] ?? json['last_message']) as String?,
+      lastMessageTime: lastMessageTime != null
+          ? DateTime.tryParse(lastMessageTime.toString())
           : null,
-      unreadCount: json['unreadCount'] as int? ?? 0,
-      isActive: json['isActive'] as bool? ?? true,
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      unreadCount: unreadCount as int? ?? 0,
+      isActive: isActive as bool? ?? true,
+      createdAt: createdAt is String
+          ? DateTime.tryParse(createdAt) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 

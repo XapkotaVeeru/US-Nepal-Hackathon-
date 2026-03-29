@@ -7,6 +7,8 @@ import '../providers/app_state_provider.dart';
 import '../providers/community_provider.dart';
 import '../providers/post_provider.dart';
 import 'chats_screen.dart';
+import 'chat_room_screen.dart';
+import 'discover_screen.dart';
 import 'journaling_screen.dart';
 import 'mood_tracking_screen.dart';
 
@@ -42,10 +44,9 @@ class _HomeScreenState extends State<HomeScreen> {
               // Create post or show results (MAIN FEATURE - moved to top)
               if (postProvider.isSubmitting)
                 _buildLoadingCard(context)
-              else if (postProvider.matchResults != null &&
-                  postProvider.currentPost != null)
+              else if (postProvider.currentCheckInResult != null)
                 MatchResultsCard(
-                  post: postProvider.currentPost!,
+                  result: postProvider.currentCheckInResult!,
                   onCreateNewPost: () => postProvider.clearMatchResults(),
                 )
               else
@@ -57,19 +58,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Mood Today Widget
               _buildMoodWidget(context),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               // Quick Actions
               _buildQuickActions(context),
               const SizedBox(height: 20),
 
-              // Recent Chats (horizontal) - removed dummy data, will show real chats from backend
+              // Recent Chats (horizontal)
+              _buildRecentChats(context),
               const SizedBox(height: 20),
 
-              // Continue Conversation Card - removed dummy data
+              // Continue Conversation Card
+              _buildContinueConversation(context),
               const SizedBox(height: 16),
 
-              // People who replied - removed dummy data
+              // People who replied
+              _buildPeopleReplied(context),
               const SizedBox(height: 16),
 
               // Last Post Summary
@@ -145,6 +149,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMoodWidget(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final periodLabel = _timePeriodLabel();
+    final moods = _timeAwareMoodOptions();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -173,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Icon(Icons.favorite, color: Colors.white, size: 22),
               const SizedBox(width: 8),
               Text(
-                'How are you today?',
+                'How are you $periodLabel?',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -183,21 +189,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'You\'re not alone. Share and connect with others who understand.',
+            _timeAwareMoodSubtitle(),
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.85),
               fontSize: 13,
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 10,
             children: [
-              _buildMoodEmoji(context, '😊', 'Great'),
-              _buildMoodEmoji(context, '🙂', 'Good'),
-              _buildMoodEmoji(context, '😐', 'Meh'),
-              _buildMoodEmoji(context, '😔', 'Low'),
-              _buildMoodEmoji(context, '😢', 'Tough'),
+              for (final mood in moods)
+                _buildMoodEmoji(
+                  context,
+                  mood.$1,
+                  mood.$2,
+                ),
             ],
           ),
         ],
@@ -246,18 +255,15 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Talk to\nSomeone',
         'color': colorScheme.primary,
         'onTap': () {
+          final provider = context.read<CommunityProvider>();
+          provider.joinCommunity('c14');
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ChatDetailScreen(
-                chat: ChatItem(
-                  id: 'new',
-                  name: 'New Conversation',
-                  lastMessage: '',
-                  timestamp: 'now',
-                  unreadCount: 0,
-                  isGroup: false,
-                ),
+              builder: (_) => const ChatRoomScreen(
+                communityId: 'c14',
+                communityName: 'Support Lounge',
+                communityEmoji: '🤝',
               ),
             ),
           );
@@ -268,11 +274,9 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Join a\nGroup',
         'color': colorScheme.tertiary,
         'onTap': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Group discovery coming soon! 🔍'),
-              duration: Duration(seconds: 2),
-            ),
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const DiscoverScreen()),
           );
         },
       },
@@ -364,6 +368,310 @@ class _HomeScreenState extends State<HomeScreen> {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  Widget _buildRecentChats(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final recentChats = [
+      {
+        'name': 'Anonymous Butterfly',
+        'message': 'Thank you for sharing...',
+        'emoji': '🦋',
+        'unread': 2
+      },
+      {
+        'name': 'Study Stress Circle',
+        'message': 'Finals week tips',
+        'emoji': '📚',
+        'unread': 5
+      },
+      {
+        'name': 'Anonymous Dove',
+        'message': 'Hope you\'re better!',
+        'emoji': '🕊️',
+        'unread': 0
+      },
+      {
+        'name': 'Anxiety Warriors',
+        'message': 'New breathing exercise',
+        'emoji': '🛡️',
+        'unread': 3
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Recent Chats',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: () {
+                // Navigate to the Chats tab – for now show a snackbar
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Switch to the Chats tab to see all conversations 💬'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: const Text('See all'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: recentChats.length,
+            itemBuilder: (context, index) {
+              final chat = recentChats[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatDetailScreen(
+                        chat: ChatItem(
+                          id: '$index',
+                          name: chat['name'] as String,
+                          lastMessage: chat['message'] as String,
+                          timestamp: 'now',
+                          unreadCount: chat['unread'] as int,
+                          isGroup: index == 1 || index == 3,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 80,
+                  margin: const EdgeInsets.only(right: 14),
+                  child: Column(
+                    children: [
+                      Stack(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  colorScheme.primaryContainer,
+                                  colorScheme.secondaryContainer,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Center(
+                              child: Text(chat['emoji'] as String,
+                                  style: const TextStyle(fontSize: 26)),
+                            ),
+                          ),
+                          if ((chat['unread'] as int) > 0)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              child: Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.error,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: colorScheme.surface, width: 2),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${chat['unread']}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        (chat['name'] as String).replaceAll('Anonymous ', ''),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContinueConversation(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.secondaryContainer.withValues(alpha: 0.4),
+            colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+          ],
+        ),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Center(
+              child: Text('🦋', style: TextStyle(fontSize: 26)),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Continue your conversation',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Anonymous Butterfly is waiting for your reply',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.outline,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          FilledButton.tonal(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatDetailScreen(
+                    chat: ChatItem(
+                      id: '1',
+                      name: 'Anonymous Butterfly',
+                      lastMessage: 'Thank you for sharing...',
+                      timestamp: '2 hours ago',
+                      unreadCount: 2,
+                      isGroup: false,
+                    ),
+                  ),
+                ),
+              );
+            },
+            child: const Text('Reply'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeopleReplied(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.reply_all, size: 18, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'People who replied to your post',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildReplyItem(context, '🔥', 'Anonymous Phoenix',
+              'I totally understand...', '2h'),
+          _buildReplyItem(context, '🦉', 'Anonymous Owl',
+              'Same here, you\'re not alone', '5h'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplyItem(BuildContext context, String emoji, String name,
+      String preview, String time) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 18))),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(
+                  preview,
+                  style: TextStyle(fontSize: 12, color: colorScheme.outline),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Text(time,
+              style: TextStyle(fontSize: 11, color: colorScheme.outline)),
+        ],
+      ),
     );
   }
 
@@ -475,5 +783,69 @@ class _HomeScreenState extends State<HomeScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  String _timePeriodLabel() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'this morning';
+    if (hour < 17) return 'this afternoon';
+    if (hour < 21) return 'this evening';
+    return 'tonight';
+  }
+
+  String _timeAwareMoodSubtitle() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Start gently. Pick the mood that matches your energy as the day begins.';
+    }
+    if (hour < 17) {
+      return 'Midday can get loud. Check in with what is actually happening for you right now.';
+    }
+    if (hour < 21) {
+      return 'You have carried a lot today. Notice what mood is staying with you into the evening.';
+    }
+    return 'Late hours can feel heavier. Choose the mood that best matches your night right now.';
+  }
+
+  List<(String, String)> _timeAwareMoodOptions() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return const [
+        ('🌞', 'Ready'),
+        ('😊', 'Calm'),
+        ('😴', 'Sleepy'),
+        ('😬', 'Anxious'),
+        ('🤍', 'Numb'),
+        ('💪', 'Hopeful'),
+      ];
+    }
+    if (hour < 17) {
+      return const [
+        ('⚡', 'Focused'),
+        ('🙂', 'Okay'),
+        ('😵', 'Overloaded'),
+        ('😔', 'Low'),
+        ('😤', 'Frustrated'),
+        ('🫠', 'Drained'),
+      ];
+    }
+    if (hour < 21) {
+      return const [
+        ('😌', 'Relieved'),
+        ('🙂', 'Steady'),
+        ('😟', 'Worried'),
+        ('😮‍💨', 'Tired'),
+        ('🥺', 'Lonely'),
+        ('🌤️', 'Need support'),
+      ];
+    }
+    return const [
+      ('🌙', 'Quiet'),
+      ('😴', 'Exhausted'),
+      ('😣', 'Heavy'),
+      ('😰', 'Spiraling'),
+      ('💭', 'Overthinking'),
+      ('🤗', 'Need comfort'),
+    ];
   }
 }

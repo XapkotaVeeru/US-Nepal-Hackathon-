@@ -1,3 +1,3 @@
-from app.api.routes import ai, health, journals, moods, notifications, sessions, users
+from app.api.routes import ai, chat_requests, health, journals, moods, notifications, sessions, users
 
-__all__ = ["health", "users", "moods", "journals", "sessions", "notifications", "ai"]
+__all__ = ["health", "users", "moods", "journals", "sessions", "chat_requests", "notifications", "ai"]

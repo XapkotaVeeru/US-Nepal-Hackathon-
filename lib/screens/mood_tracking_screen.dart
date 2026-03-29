@@ -76,6 +76,7 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
 
   Future<void> _submitMood() async {
     if (_selectedMoodIndex == null) return;
+    final selectedLabel = _moods[_selectedMoodIndex!].label;
 
     final success = await context.read<MoodProvider>().addEntry(
           moodLevel: _selectedMoodIndex! + 1,
@@ -103,8 +104,7 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     _noteController.clear();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text('Mood logged: ${_moods[_selectedMoodIndex!].label} ✓'),
+        content: Text('Mood logged: $selectedLabel ✓'),
         behavior: SnackBarBehavior.floating,
         backgroundColor: _C.sage,
         shape: RoundedRectangleBorder(
@@ -129,9 +129,18 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
       _isVoiceListening = true;
       _voiceError = null;
       _voiceTranscript = '';
+      _voiceAnalysis = null;
     });
 
-    await _speechService.startListening(onResult: (_) {});
+    await _speechService.startListening(
+      onResult: (transcript) {
+        if (!mounted) return;
+        setState(() {
+          _voiceTranscript = transcript;
+          _voiceError = null;
+        });
+      },
+    );
   }
 
   Future<void> _stopVoiceCheckIn() async {
@@ -173,6 +182,28 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
         setState(() => _isAnalyzingVoice = false);
       }
     }
+  }
+
+  Future<void> _clearVoiceCheckIn() async {
+    if (_isVoiceListening) {
+      await _speechService.stopListening();
+    }
+    if (!mounted) return;
+    setState(() {
+      _isVoiceListening = false;
+      _isAnalyzingVoice = false;
+      _voiceTranscript = '';
+      _voiceError = null;
+      _voiceAnalysis = null;
+      _selectedMoodIndex = null;
+    });
+    _noteController.clear();
+  }
+
+  Future<void> _retryVoiceCheckIn() async {
+    await _clearVoiceCheckIn();
+    if (!mounted) return;
+    await _startVoiceCheckIn();
   }
 
   int _moodIndexFromAnalysis(EmotionAnalysis analysis) {
@@ -235,6 +266,8 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
                       setState(() => _selectedMoodIndex = i),
                   onVoiceCheckInStart: _startVoiceCheckIn,
                   onVoiceCheckInEnd: _stopVoiceCheckIn,
+                  onVoiceClear: _clearVoiceCheckIn,
+                  onVoiceRetry: _retryVoiceCheckIn,
                   onSubmit: _submitMood,
                 ),
                 const SizedBox(height: 20),
@@ -351,6 +384,8 @@ class _CheckInCard extends StatelessWidget {
   final ValueChanged<int> onMoodSelected;
   final Future<void> Function() onVoiceCheckInStart;
   final Future<void> Function() onVoiceCheckInEnd;
+  final Future<void> Function() onVoiceClear;
+  final Future<void> Function() onVoiceRetry;
   final VoidCallback onSubmit;
 
   const _CheckInCard({
@@ -368,6 +403,8 @@ class _CheckInCard extends StatelessWidget {
     required this.onMoodSelected,
     required this.onVoiceCheckInStart,
     required this.onVoiceCheckInEnd,
+    required this.onVoiceClear,
+    required this.onVoiceRetry,
     required this.onSubmit,
   });
 
@@ -486,6 +523,22 @@ class _CheckInCard extends StatelessWidget {
                   color: isDark ? const Color(0xFFE8F0EE) : _C.ink,
                 ),
               ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: onVoiceClear,
+                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  label: const Text('Clear'),
+                ),
+                const SizedBox(width: 6),
+                TextButton.icon(
+                  onPressed: isVoiceListening ? null : onVoiceRetry,
+                  icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                  label: const Text('Record again'),
+                ),
+              ],
             ),
           ],
 

@@ -1,23 +1,37 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import '../models/session_model.dart';
+
+import '../models/chat_request_model.dart';
 import '../models/message_model.dart';
+import '../models/session_model.dart';
 import '../services/api_service.dart';
+import '../services/llm_chat_service.dart';
 import '../services/websocket_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final ApiService _apiService;
+  final LlmChatService _llmChatService;
+
   WebSocketService? _wsService;
+  StreamSubscription<ConnectionState>? _connectionSubscription;
+  StreamSubscription<Message>? _messageSubscription;
+  String? _activeAnonymousId;
+  String? _activeWsUrl;
 
   List<ChatSession> _sessions = [];
   final Map<String, List<Message>> _messagesBySession = {};
   final Map<String, Timer> _pendingBotReplies = {};
+  final Set<String> _joinedCommunities = {};
   bool _isLoading = false;
   String? _error;
   ConnectionState _connectionState = ConnectionState.disconnected;
 
-  ChatProvider(this._apiService);
+  ChatProvider({
+    required ApiService apiService,
+    required LlmChatService llmChatService,
+  })  : _apiService = apiService,
+        _llmChatService = llmChatService;
 
   List<ChatSession> get sessions => _sessions;
   bool get isLoading => _isLoading;
@@ -25,41 +39,58 @@ class ChatProvider with ChangeNotifier {
   ConnectionState get connectionState => _connectionState;
   WebSocketService? get wsService => _wsService;
   int get totalUnreadCount =>
-      _sessions.fold(0, (sum, s) => sum + s.unreadCount);
+      _sessions.fold(0, (sum, session) => sum + session.unreadCount);
+  bool get isConnected =>
+      _wsService != null && _connectionState == ConnectionState.connected;
+  bool get isAssistantFallbackMode =>
+      _connectionState == ConnectionState.failed ||
+      _connectionState == ConnectionState.disconnected;
+  List<String> get typingUsers => const [];
 
-  /// Initialize WebSocket with backend endpoint
   void initializeWebSocket(String wsUrl, String anonymousId) {
+    _connectionSubscription?.cancel();
+    _messageSubscription?.cancel();
     _wsService?.dispose();
 
     _wsService = WebSocketService(wsUrl: wsUrl, anonymousId: anonymousId);
 
-    // Listen to connection state
-    _wsService!.connectionState.listen((state) {
+    _connectionSubscription = _wsService!.connectionState.listen((state) {
       _connectionState = state;
+      if (state == ConnectionState.connected) {
+        for (final communityId in _joinedCommunities) {
+          _wsService?.joinCommunity(communityId);
+        }
+      }
       notifyListeners();
     });
 
-    // Listen to messages
-    _wsService!.messages.listen((message) {
-      _handleIncomingMessage(message);
-    });
+    _messageSubscription = _wsService!.messages.listen(_handleIncomingMessage);
 
     _wsService!.connect();
   }
 
-  /// Load user sessions
+  void bindAnonymousUser({
+    required String? anonymousId,
+    required String wsUrl,
+  }) {
+    if (anonymousId == null || anonymousId.isEmpty) return;
+
+    final hasSameBinding =
+        _activeAnonymousId == anonymousId && _activeWsUrl == wsUrl;
+    if (hasSameBinding) return;
+
+    _activeAnonymousId = anonymousId;
+    _activeWsUrl = wsUrl;
+    initializeWebSocket(wsUrl, anonymousId);
+  }
+
   Future<void> loadSessions(String anonymousId) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final remoteSessions = await _apiService.getUserSessions(anonymousId);
-      final localOnlySessions = _sessions
-          .where((local) => !remoteSessions.any((remote) => remote.id == local.id))
-          .toList();
-      _sessions = [...localOnlySessions, ...remoteSessions];
-      _sortSessions();
+      _sessions = await _apiService.getUserSessions(anonymousId);
     } catch (e) {
       _error = e.toString();
       debugPrint('Error loading sessions: $e');
@@ -69,14 +100,29 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Load messages for a community
+  Future<void> openCommunity(String communityId) async {
+    _joinedCommunities.add(communityId);
+    _messagesBySession.putIfAbsent(communityId, () => []);
+    await loadCommunityMessages(communityId);
+
+    if (_connectionState == ConnectionState.connected) {
+      _wsService?.joinCommunity(communityId);
+    } else {
+      _wsService?.connect();
+    }
+  }
+
   Future<void> loadCommunityMessages(String communityId) async {
     try {
       final messages = await _apiService.getCommunityMessages(communityId);
-      _messagesBySession[communityId] = messages;
+      _messagesBySession[communityId] = _mergeMessageLists(
+        _messagesBySession[communityId] ?? const [],
+        messages,
+      );
 
-      // Join WebSocket room for real-time updates
-      _wsService?.joinCommunity(communityId);
+      if (_connectionState == ConnectionState.connected) {
+        _wsService?.joinCommunity(communityId);
+      }
 
       notifyListeners();
     } catch (e) {
@@ -86,41 +132,34 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Load messages for a session (legacy)
   Future<void> loadMessages(String sessionId) async {
     try {
       final messages = await _apiService.getSessionMessages(sessionId);
-      _messagesBySession[sessionId] = messages;
+      _messagesBySession[sessionId] = _mergeMessageLists(
+        _messagesBySession[sessionId] ?? const [],
+        messages,
+      );
 
-      // Join WebSocket room
-      _wsService?.joinCommunity(sessionId);
+      if (_connectionState == ConnectionState.connected) {
+        _wsService?.joinCommunity(sessionId);
+      }
 
       notifyListeners();
     } catch (e) {
       _error = e.toString();
-      debugPrint('Error loading messages: $e');
+      debugPrint('Error loading session messages: $e');
       notifyListeners();
     }
   }
 
-  /// Send a message to a community
-  void sendCommunityMessage({
-    required String communityId,
-    required String content,
-  }) {
-    try {
-      _wsService?.sendMessage(communityId: communityId, content: content);
-    } catch (e) {
-      _error = e.toString();
-      debugPrint('Error sending message: $e');
-      notifyListeners();
-    }
-  }
-
-  /// Join a community channel (WebSocket + local message bucket).
   void joinCommunity(String communityId) {
+    _joinedCommunities.add(communityId);
     _messagesBySession.putIfAbsent(communityId, () => []);
-    _wsService?.joinCommunity(communityId);
+
+    if (_connectionState == ConnectionState.connected) {
+      _wsService?.joinCommunity(communityId);
+    }
+
     notifyListeners();
   }
 
@@ -129,191 +168,221 @@ class ChatProvider with ChangeNotifier {
   }
 
   void sendTyping(String communityId) {
-    _wsService?.sendAction('typing', {'communityId': communityId});
+    if (_connectionState == ConnectionState.connected) {
+      _wsService?.sendAction('typing', {'communityId': communityId});
+    }
   }
-
-  List<String> get typingUsers => const [];
-
-  bool get isConnected =>
-      _wsService != null && _connectionState == ConnectionState.connected;
 
   List<Message> messagesForCommunity(String communityId) =>
       getMessages(communityId);
 
-  /// Send a user message in a community chat (optimistic local echo + WS).
-  void sendMessage({
+  Future<void> sendMessage({
     required String communityId,
     required String content,
     required String senderId,
     required String senderName,
-  }) {
-    final msg = Message(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+  }) async {
+    final normalized = content.trim();
+    if (normalized.isEmpty) return;
+
+    final localId = 'local-${DateTime.now().microsecondsSinceEpoch}';
+    final message = Message(
+      id: localId,
       sessionId: communityId,
       senderId: senderId,
       senderName: senderName,
-      content: content,
+      content: normalized,
       timestamp: DateTime.now(),
       type: MessageType.user,
-      status: MessageStatus.sent,
+      status: _connectionState == ConnectionState.connected
+          ? MessageStatus.sending
+          : MessageStatus.sent,
     );
+
     _messagesBySession.putIfAbsent(communityId, () => []);
-    _messagesBySession[communityId]!.add(msg);
-    _upsertSessionPreview(
-      sessionId: communityId,
-      lastMessage: content,
-      lastMessageTime: msg.timestamp,
-      createIfMissing: true,
-    );
+    _messagesBySession[communityId]!.add(message);
     notifyListeners();
-    sendCommunityMessage(communityId: communityId, content: content);
-    _scheduleBotReply(communityId: communityId, content: content);
+
+    if (_connectionState == ConnectionState.connected) {
+      _wsService?.sendMessage(
+        communityId: communityId,
+        content: normalized,
+        senderName: senderName,
+      );
+      _updateMessageStatus(
+        communityId: communityId,
+        messageId: localId,
+        status: MessageStatus.sent,
+      );
+    } else {
+      final persisted = await _apiService.createSessionMessage(
+        sessionId: communityId,
+        senderId: senderId,
+        senderName: senderName,
+        content: normalized,
+      );
+
+      if (persisted != null) {
+        _replaceMessage(
+          communityId: communityId,
+          messageId: localId,
+          replacement: persisted.copyWith(status: MessageStatus.delivered),
+        );
+      } else {
+        _updateMessageStatus(
+          communityId: communityId,
+          messageId: localId,
+          status: MessageStatus.failed,
+        );
+      }
+    }
+
+    _scheduleBotReply(
+      communityId: communityId,
+      communityName: communityId,
+      content: normalized,
+    );
   }
 
   void _scheduleBotReply({
     required String communityId,
+    required String communityName,
     required String content,
   }) {
     _pendingBotReplies[communityId]?.cancel();
     _pendingBotReplies[communityId] = Timer(
       const Duration(milliseconds: 900),
-      () {
-        final reply = _generateBotReply(
-          communityId: communityId,
-          content: content,
-        );
-        final botMessage = Message(
-          id: 'assistant-${DateTime.now().microsecondsSinceEpoch}',
-          sessionId: communityId,
-          senderId: 'serenity-assistant',
-          senderName: 'Serenity Bot',
-          content: reply,
-          timestamp: DateTime.now(),
-          type: MessageType.assistant,
-          status: MessageStatus.delivered,
-        );
+      () async {
+        try {
+          final reply = await _llmChatService.generateReply(
+            LlmChatRequest(
+              communityId: communityId,
+              communityName: communityName,
+              latestUserMessage: content,
+              recentMessages: List<Message>.from(
+                _messagesBySession[communityId] ?? const [],
+              ),
+            ),
+          );
 
-        _messagesBySession.putIfAbsent(communityId, () => []);
-        _messagesBySession[communityId]!.add(botMessage);
-        _upsertSessionPreview(
-          sessionId: communityId,
-          lastMessage: reply,
-          lastMessageTime: botMessage.timestamp,
-        );
-        notifyListeners();
-        _pendingBotReplies.remove(communityId);
+          final persisted = await _apiService.createSessionMessage(
+            sessionId: communityId,
+            senderId: 'serenity-assistant',
+            senderName: 'Serenity Guide',
+            content: reply.content,
+            type: MessageType.assistant,
+          );
+
+          final botMessage = persisted ??
+              Message(
+                id: 'assistant-${DateTime.now().microsecondsSinceEpoch}',
+                sessionId: communityId,
+                senderId: 'serenity-assistant',
+                senderName: 'Serenity Guide',
+                content: reply.content,
+                timestamp: DateTime.now(),
+                type: MessageType.assistant,
+                status: MessageStatus.delivered,
+              );
+
+          _handleIncomingMessage(botMessage.copyWith(status: MessageStatus.delivered));
+        } catch (e) {
+          debugPrint('Error generating assistant reply: $e');
+        } finally {
+          _pendingBotReplies.remove(communityId);
+        }
       },
     );
   }
 
-  String _generateBotReply({
-    required String communityId,
-    required String content,
-  }) {
-    final normalized = content.toLowerCase();
-
-    if (_containsAny(normalized, const [
-      'suicide',
-      'hurt myself',
-      'self harm',
-      'don\'t want to live',
-      'hopeless',
-    ])) {
-      return 'I\'m really glad you said that out loud. Please reach out to a trusted person nearby and use the Crisis Resources section if you might be in immediate danger.';
-    }
-
-    if (_containsAny(normalized, const [
-      'anxious',
-      'panic',
-      'overthinking',
-      'racing',
-    ])) {
-      return 'That sounds really overwhelming. Try one tiny grounding step right now: name 5 things you can see, then take one slow breath with your shoulders dropped.';
-    }
-
-    if (_containsAny(normalized, const [
-      'sad',
-      'alone',
-      'lonely',
-      'depressed',
-      'crying',
-    ])) {
-      return 'You don\'t have to carry that by yourself here. If it helps, tell us whether today feels heavy because of one event, or because everything has been building up.';
-    }
-
-    if (_containsAny(normalized, const [
-      'exam',
-      'study',
-      'deadline',
-      'college',
-      'school',
-    ])) {
-      return 'Academic pressure can eat up all your headspace. What feels most urgent right now: the workload, fear of failing, or trying to recover your energy?';
-    }
-
-    if (_containsAny(normalized, const [
-      'family',
-      'parent',
-      'relationship',
-      'friend',
-    ])) {
-      return 'Relationship stress can linger long after the moment passes. If you want, share what happened and what part hurt the most so we can help you untangle it.';
-    }
-
-    if (_containsAny(normalized, const [
-      'better',
-      'grateful',
-      'proud',
-      'good',
-      'hopeful',
-    ])) {
-      return 'That\'s worth holding onto. What helped even a little today? Naming it can make it easier to return to when things get hard again.';
-    }
-
-    if (communityId == 'c4') {
-      return 'A gentle reset might help here. Try one sentence: "Right now, I notice..." and finish it without judging yourself.';
-    }
-
-    return 'Thanks for sharing that. I\'m here with you, and this space is too. If you want, say a little more about what today has felt like.';
-  }
-
-  bool _containsAny(String text, List<String> patterns) {
-    for (final pattern in patterns) {
-      if (text.contains(pattern)) return true;
-    }
-    return false;
-  }
-
-  /// Handle incoming WebSocket message
   void _handleIncomingMessage(Message message) {
-    // Add to message list by community/session
     final key = message.sessionId;
-    if (_messagesBySession.containsKey(key)) {
-      _messagesBySession[key]!.add(message);
-    } else {
-      _messagesBySession[key] = [message];
+    _messagesBySession.putIfAbsent(key, () => []);
+    final list = _messagesBySession[key]!;
+
+    if (message.senderId == _activeAnonymousId) {
+      final localIndex = list.lastIndexWhere(
+        (candidate) =>
+            candidate.senderId == message.senderId &&
+            candidate.content == message.content &&
+            candidate.id.startsWith('local-'),
+      );
+      if (localIndex != -1) {
+        list[localIndex] = message.copyWith(status: MessageStatus.delivered);
+        notifyListeners();
+        return;
+      }
     }
 
-    // Update session last message if applicable
-    _upsertSessionPreview(
-      sessionId: key,
-      lastMessage: message.content,
-      lastMessageTime: message.timestamp,
-      unreadDelta: 1,
-      createIfMissing: true,
-    );
+    if (list.any((candidate) => candidate.id == message.id)) {
+      return;
+    }
+
+    list.add(message);
+
+    final sessionIndex = _sessions.indexWhere((session) => session.id == key);
+    if (sessionIndex != -1) {
+      _sessions[sessionIndex] = _sessions[sessionIndex].copyWith(
+        lastMessage: message.content,
+        lastMessageTime: message.timestamp,
+        unreadCount: _sessions[sessionIndex].unreadCount + 1,
+      );
+    }
 
     notifyListeners();
   }
 
-  /// Get messages for a session/community
+  List<Message> _mergeMessageLists(
+    List<Message> existing,
+    List<Message> incoming,
+  ) {
+    final merged = <String, Message>{};
+    for (final message in [...existing, ...incoming]) {
+      final key = message.id.isNotEmpty
+          ? message.id
+          : '${message.sessionId}:${message.senderId}:${message.timestamp.toIso8601String()}';
+      merged[key] = message;
+    }
+
+    final items = merged.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return items;
+  }
+
+  void _updateMessageStatus({
+    required String communityId,
+    required String messageId,
+    required MessageStatus status,
+  }) {
+    final list = _messagesBySession[communityId];
+    if (list == null) return;
+
+    final index = list.indexWhere((message) => message.id == messageId);
+    if (index == -1) return;
+    list[index] = list[index].copyWith(status: status);
+    notifyListeners();
+  }
+
+  void _replaceMessage({
+    required String communityId,
+    required String messageId,
+    required Message replacement,
+  }) {
+    final list = _messagesBySession[communityId];
+    if (list == null) return;
+
+    final index = list.indexWhere((message) => message.id == messageId);
+    if (index == -1) return;
+    list[index] = replacement;
+    notifyListeners();
+  }
+
   List<Message> getMessages(String id) {
     return _messagesBySession[id] ?? [];
   }
 
-  /// Mark session as read
   void markSessionAsRead(String sessionId) {
-    final sessionIndex = _sessions.indexWhere((s) => s.id == sessionId);
+    final sessionIndex = _sessions.indexWhere((session) => session.id == sessionId);
     if (sessionIndex != -1) {
       _sessions[sessionIndex] =
           _sessions[sessionIndex].copyWith(unreadCount: 0);
@@ -321,23 +390,22 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Send chat request
-  Future<void> sendChatRequest({
+  Future<ChatRequestResult> sendChatRequest({
     required String fromUserId,
     required String toUserId,
-    String? fromUserName,
-    String? toUserName,
-    String type = 'direct',
-    String? groupName,
+    String? contextSummary,
+    List<String> matchedThemes = const [],
+    String? supportCategory,
+    String? userCategory,
   }) async {
     try {
-      await _apiService.sendChatRequest(
+      return await _apiService.sendChatRequest(
         fromUserId: fromUserId,
         toUserId: toUserId,
-        fromUserName: fromUserName,
-        toUserName: toUserName,
-        type: type,
-        groupName: groupName,
+        contextSummary: contextSummary,
+        matchedThemes: matchedThemes,
+        supportCategory: supportCategory,
+        userCategory: userCategory,
       );
     } catch (e) {
       _error = e.toString();
@@ -347,109 +415,6 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  void createSessionFromAcceptedRequest({
-    required String requestId,
-    required String currentUserId,
-    required String otherUserId,
-    required String otherUserName,
-    required bool isGroup,
-    String? groupName,
-  }) {
-    final now = DateTime.now();
-    final sessionId = isGroup ? 'group_$requestId' : 'direct_$requestId';
-    final sessionName = isGroup
-        ? (groupName?.trim().isNotEmpty == true
-            ? groupName!.trim()
-            : 'Support Circle with $otherUserName')
-        : otherUserName;
-    final initialMessage = isGroup
-        ? 'This support circle is live. Start gently and make space for each other.'
-        : 'Your chat request was accepted. Say hello when you are ready.';
-
-    final existingIndex = _sessions.indexWhere((session) => session.id == sessionId);
-    final session = ChatSession(
-      id: sessionId,
-      type: isGroup ? 'group' : 'individual',
-      name: sessionName,
-      participantIds: [currentUserId, otherUserId],
-      lastMessage: initialMessage,
-      lastMessageTime: now,
-      unreadCount: 0,
-      isActive: true,
-      createdAt: now,
-    );
-
-    if (existingIndex == -1) {
-      _sessions.insert(0, session);
-    } else {
-      _sessions[existingIndex] = session;
-    }
-
-    _messagesBySession.putIfAbsent(sessionId, () {
-      return [
-        Message(
-          id: 'system-$requestId',
-          sessionId: sessionId,
-          senderId: isGroup ? 'group-system' : otherUserId,
-          senderName: isGroup ? 'Serenity' : otherUserName,
-          content: initialMessage,
-          timestamp: now,
-          type: isGroup ? MessageType.system : MessageType.matchNotification,
-          status: MessageStatus.delivered,
-        ),
-      ];
-    });
-
-    _sortSessions();
-    notifyListeners();
-  }
-
-  void _upsertSessionPreview({
-    required String sessionId,
-    required String lastMessage,
-    required DateTime lastMessageTime,
-    int unreadDelta = 0,
-    bool createIfMissing = false,
-  }) {
-    final sessionIndex = _sessions.indexWhere((s) => s.id == sessionId);
-    if (sessionIndex != -1) {
-      final existing = _sessions[sessionIndex];
-      _sessions[sessionIndex] = existing.copyWith(
-        lastMessage: lastMessage,
-        lastMessageTime: lastMessageTime,
-        unreadCount: (existing.unreadCount + unreadDelta).clamp(0, 9999) as int,
-      );
-      _sortSessions();
-      return;
-    }
-
-    if (!createIfMissing) return;
-
-    _sessions.insert(
-      0,
-      ChatSession(
-        id: sessionId,
-        type: 'group',
-        name: 'Conversation',
-        participantIds: const [],
-        lastMessage: lastMessage,
-        lastMessageTime: lastMessageTime,
-        unreadCount: unreadDelta.clamp(0, 9999) as int,
-        createdAt: lastMessageTime,
-      ),
-    );
-    _sortSessions();
-  }
-
-  void _sortSessions() {
-    _sessions.sort((a, b) {
-      final aTime = a.lastMessageTime ?? a.createdAt;
-      final bTime = b.lastMessageTime ?? b.createdAt;
-      return bTime.compareTo(aTime);
-    });
-  }
-
-  /// Clear error
   void clearError() {
     _error = null;
     notifyListeners();
@@ -460,6 +425,8 @@ class ChatProvider with ChangeNotifier {
     for (final timer in _pendingBotReplies.values) {
       timer.cancel();
     }
+    _connectionSubscription?.cancel();
+    _messageSubscription?.cancel();
     _wsService?.dispose();
     super.dispose();
   }

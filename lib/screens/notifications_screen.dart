@@ -1,49 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../providers/app_state_provider.dart';
+import '../models/notification_model.dart';
 import '../providers/notification_provider.dart';
+import 'chat_room_screen.dart';
 
-class NotificationsScreen extends StatefulWidget {
+class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
-
-  @override
-  State<NotificationsScreen> createState() => _NotificationsScreenState();
-}
-
-class _NotificationsScreenState extends State<NotificationsScreen> {
-  Timer? _pollTimer;
-  String? _loadedForUserId;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final anonymousId = context.read<AppStateProvider>().anonymousId;
-    if (anonymousId == null || anonymousId == _loadedForUserId) return;
-
-    _loadedForUserId = anonymousId;
-    _loadRequests();
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted) {
-        _loadRequests();
-      }
-    });
-  }
-
-  Future<void> _loadRequests() async {
-    final anonymousId = context.read<AppStateProvider>().anonymousId;
-    if (anonymousId == null) return;
-    await context.read<NotificationProvider>().loadChatRequests(anonymousId);
-  }
-
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +59,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Request approvals and updates will appear here.',
+              "You'll see updates, requests, and messages here",
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),
@@ -126,6 +89,7 @@ class NotificationTile extends StatelessWidget {
       confirmDismiss: (_) => _confirmDelete(context),
       onDismissed: (_) {
         provider.deleteNotification(notification.id);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Notification deleted'),
@@ -179,7 +143,10 @@ class NotificationTile extends StatelessWidget {
                 ],
               ),
               isThreeLine: true,
-              onTap: () => provider.markAsRead(notification.id),
+              onTap: () {
+                provider.markAsRead(notification.id);
+                _handleTap(context, notification);
+              },
             ),
             if (isActionable)
               Padding(
@@ -280,6 +247,8 @@ IconData _getIcon(NotificationType type) {
       return Icons.message;
     case NotificationType.matchFound:
       return Icons.check_circle;
+    case NotificationType.system:
+      return Icons.info_outline;
   }
 }
 
@@ -295,6 +264,8 @@ Color _getColor(BuildContext context, NotificationType type) {
       return scheme.tertiary;
     case NotificationType.matchFound:
       return Colors.green;
+    case NotificationType.system:
+      return scheme.primary;
   }
 }
 
@@ -306,4 +277,32 @@ String _formatTime(DateTime time) {
   if (diff.inDays < 7) return '${diff.inDays}d ago';
 
   return '${time.day}/${time.month}/${time.year}';
+}
+
+void _handleTap(BuildContext context, NotificationItem notification) {
+  final actionData = notification.actionData ?? const <String, dynamic>{};
+  final sessionId = actionData['sessionId'] ?? actionData['session_id'];
+  final communityId = actionData['communityId'] ?? actionData['community_id'];
+  final roomId = (sessionId ?? communityId)?.toString();
+
+  if (roomId != null && roomId.isNotEmpty) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatRoomScreen(
+          communityId: roomId,
+          communityName: (actionData['communityName'] ??
+                  actionData['community_name'] ??
+                  actionData['fromUserName'] ??
+                  actionData['from_user_name'] ??
+                  'Support Chat')
+              .toString(),
+          communityEmoji: (actionData['communityEmoji'] ??
+                  actionData['community_emoji'] ??
+                  '💬')
+              .toString(),
+        ),
+      ),
+    );
+  }
 }

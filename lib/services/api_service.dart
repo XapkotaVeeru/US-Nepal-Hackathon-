@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/journal_entry_model.dart';
 import '../models/mood_entry_model.dart';
+import '../models/chat_request_model.dart';
+import '../models/notification_model.dart';
 import '../models/post_model.dart';
 import '../models/session_model.dart';
 import '../models/message_model.dart';
@@ -577,6 +579,82 @@ class ApiService {
     }
   }
 
+  Future<List<NotificationItem>> listNotifications({
+    required String userId,
+  }) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/users/$userId/notifications'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final items = data is List
+            ? data
+            : (data is Map && data['notifications'] is List)
+                ? data['notifications'] as List
+                : const [];
+        return items
+            .map((item) => NotificationItem.fromJson(item))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('Error loading notifications: $e');
+    }
+    return const [];
+  }
+
+  Future<NotificationItem?> createNotification({
+    required String userId,
+    required NotificationType type,
+    required String title,
+    required String message,
+    Map<String, dynamic>? actionData,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/users/$userId/notifications'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'type': notificationTypeToApi(type),
+          'title': title,
+          'message': message,
+          'action_data': actionData,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return NotificationItem.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error creating notification: $e');
+    }
+    return null;
+  }
+
+  Future<NotificationItem?> markNotificationRead({
+    required String notificationId,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/notifications/$notificationId/read'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return NotificationItem.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error marking notification read: $e');
+    }
+    return null;
+  }
+
   // ═══════════════════════════════════════════════
   //  Media (POST /media/upload-url)
   // ═══════════════════════════════════════════════
@@ -619,8 +697,12 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final sessions = data['sessions'] as List;
+        final data = jsonDecode(response.body);
+        final sessions = data is List
+            ? data
+            : (data is Map && data['sessions'] is List)
+                ? data['sessions'] as List
+                : const [];
         return sessions.map((s) => ChatSession.fromJson(s)).toList();
       } else {
         return []; // Gracefully return empty on error
@@ -639,8 +721,12 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final messages = data['messages'] as List;
+        final data = jsonDecode(response.body);
+        final messages = data is List
+            ? data
+            : (data is Map && data['messages'] is List)
+                ? data['messages'] as List
+                : const [];
         return messages.map((m) => Message.fromJson(m)).toList();
       } else {
         return [];
@@ -656,15 +742,17 @@ class ApiService {
     required String senderId,
     required String senderName,
     required String content,
+    MessageType type = MessageType.user,
   }) async {
     try {
       final response = await _client.post(
         _chatUri('/sessions/$sessionId/messages'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'senderId': senderId,
-          'senderName': senderName,
+          'sender_id': senderId,
+          'sender_name': senderName,
           'content': content,
+          'type': type.name,
         }),
       );
 
@@ -702,25 +790,25 @@ class ApiService {
     return [];
   }
 
-  Future<void> sendChatRequest({
+  Future<ChatRequestResult> sendChatRequest({
     required String fromUserId,
     required String toUserId,
-    String? fromUserName,
-    String? toUserName,
-    String type = 'direct',
-    String? groupName,
+    String? contextSummary,
+    List<String> matchedThemes = const [],
+    String? supportCategory,
+    String? userCategory,
   }) async {
     try {
       final response = await _client.post(
         _chatUri('/chat-requests'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'fromUserId': fromUserId,
-          'toUserId': toUserId,
-          'fromUserName': fromUserName,
-          'toUserName': toUserName,
-          'type': type,
-          'groupName': groupName,
+          'from_user_id': fromUserId,
+          'to_user_id': toUserId,
+          'context_summary': contextSummary,
+          'matched_themes': matchedThemes,
+          'support_category': supportCategory,
+          'user_category': userCategory,
         }),
       );
 
@@ -730,6 +818,10 @@ class ApiService {
           response.statusCode,
         );
       }
+
+      return ChatRequestResult.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException('Network error: $e', 0);

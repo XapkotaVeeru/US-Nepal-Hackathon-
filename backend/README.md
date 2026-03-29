@@ -108,7 +108,14 @@ The API will be available at:
 ### Notifications
 
 - `GET /users/{user_id}/notifications`
+- `POST /users/{user_id}/notifications`
 - `POST /notifications/{notification_id}/read`
+
+### Chat requests
+
+- `POST /chat-requests`
+- `POST /chat-requests/{request_id}/accept`
+- `POST /chat-requests/{request_id}/decline`
 
 ### Future AI placeholders
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/chats_screen.dart';
+import 'screens/discover_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/insights_screen.dart';
@@ -41,14 +42,8 @@ void main() async {
 
   final anonymousIdService = await AnonymousIdService.create();
 
-  const apiBaseUrl =
-      'https://13qpnxtgok.execute-api.us-east-1.amazonaws.com/prod';
-  const chatApiBaseUrl =
-      'https://8ny2n4o42f.execute-api.us-east-1.amazonaws.com/prod';
-  final apiService = ApiService(
-    baseUrl: apiBaseUrl,
-    chatBaseUrl: chatApiBaseUrl,
-  );
+  const apiBaseUrl = BackendConfig.defaultApiBaseUrl;
+  final apiService = ApiService(baseUrl: apiBaseUrl);
   const emotionalAnalysisService = ResilientEmotionalAnalysisService(
     fallback: LocalEmotionalAnalysisService(),
   );
@@ -151,8 +146,14 @@ class MentalHealthSupportApp extends StatelessWidget {
             return provider;
           },
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<AppStateProvider, NotificationProvider>(
           create: (_) => NotificationProvider(apiService),
+          update: (_, appState, notificationProvider) {
+            final provider =
+                notificationProvider ?? NotificationProvider(apiService);
+            provider.bindUser(appState.anonymousId);
+            return provider;
+          },
         ),
         ChangeNotifierProxyProvider<AppStateProvider, CommunityProvider>(
           create: (_) => CommunityProvider(apiService: apiService),
@@ -380,6 +381,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   final List<Widget> _screens = const [
     HomeScreen(),
+    DiscoverScreen(),
     ChatsScreen(),
     NotificationsScreen(),
     ProfileScreen(),
@@ -390,6 +392,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
       label: 'Home',
+    ),
+    _NavItem(
+      icon: Icons.explore_outlined,
+      activeIcon: Icons.explore,
+      label: 'Discover',
     ),
     _NavItem(
       icon: Icons.chat_bubble_outline_rounded,
