@@ -16,12 +16,15 @@ import 'screens/about_screen.dart';
 
 import 'services/anonymous_id_service.dart';
 import 'services/api_service.dart';
+import 'config/backend_config.dart';
 
 import 'providers/app_state_provider.dart';
 import 'providers/post_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/community_provider.dart';
+import 'providers/journal_provider.dart';
+import 'providers/mood_provider.dart';
 import 'widgets/help_me_now_button.dart';
 
 void main() async {
@@ -88,13 +91,35 @@ class MentalHealthSupportApp extends StatelessWidget {
           create: (_) => AppStateProvider(anonymousIdService)..initialize(),
         ),
         ChangeNotifierProvider(create: (_) => PostProvider(apiService)),
-        ChangeNotifierProvider(create: (_) => ChatProvider(apiService)),
+        ChangeNotifierProvider(
+          create: (ctx) {
+            final chatProvider = ChatProvider(apiService);
+            // Initialize WebSocket after a frame to let AppState load first
+            Future.microtask(() {
+              final appState = ctx.read<AppStateProvider>();
+              final userId = appState.anonymousId;
+              if (userId != null) {
+                chatProvider.initializeWebSocket(
+                  BackendConfig.websocketUrl,
+                  userId,
+                );
+              }
+            });
+            return chatProvider;
+          },
+        ),
         ChangeNotifierProvider(
           create: (_) =>
               NotificationProvider(apiService)..loadMockNotifications(),
         ),
         ChangeNotifierProvider(
-          create: (_) => CommunityProvider(),
+          create: (_) => CommunityProvider(apiService: apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => MoodProvider()..loadEntries(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => JournalProvider()..loadEntries(),
         ),
       ],
       child: MaterialApp(

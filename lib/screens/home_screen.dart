@@ -1,16 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../services/emotion_service.dart';
+import '../services/speech_service.dart';
 import '../widgets/create_post_card.dart';
 import '../widgets/match_results_card.dart';
 import '../providers/app_state_provider.dart';
-import '../providers/post_provider.dart';
 import '../providers/community_provider.dart';
+import '../providers/post_provider.dart';
+import 'chat_room_screen.dart';
 import 'chats_screen.dart';
-import 'mood_tracking_screen.dart';
 import 'journaling_screen.dart';
+import 'mood_tracking_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final SpeechService _speechService = SpeechService();
+  bool _isListening = false;
+  bool _isAnalyzingVoice = false;
+  String _voiceTranscript = '';
+  EmotionAnalysis? _voiceAnalysis;
+  String? _voiceError;
+
+  @override
+  void initState() {
+    super.initState();
+    _speechService.initialize();
+  }
+
+  @override
+  void dispose() {
+    _speechService.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +59,10 @@ class HomeScreen extends StatelessWidget {
               // Mood Today Widget
               _buildMoodWidget(context),
               const SizedBox(height: 16),
+
+              // Voice check-in
+              _buildVoiceSentimentCard(context),
+              const SizedBox(height: 20),
 
               // Quick Actions
               _buildQuickActions(context),
@@ -59,17 +91,18 @@ class HomeScreen extends StatelessWidget {
               if (postProvider.error != null) const SizedBox(height: 16),
 
               // Create post or show results
-              if (postProvider.matchResults == null)
-                CreatePostCard(
-                  anonymousId: appState.anonymousId ?? '',
-                  isSubmitting: postProvider.isSubmitting,
-                )
-              else if (postProvider.isSubmitting)
+              if (postProvider.isSubmitting)
                 _buildLoadingCard(context)
-              else
+              else if (postProvider.matchResults != null &&
+                  postProvider.currentPost != null)
                 MatchResultsCard(
                   post: postProvider.currentPost!,
                   onCreateNewPost: () => postProvider.clearMatchResults(),
+                )
+              else
+                CreatePostCard(
+                  anonymousId: appState.anonymousId ?? '',
+                  isSubmitting: postProvider.isSubmitting,
                 ),
 
               const SizedBox(height: 80),
@@ -77,6 +110,356 @@ class HomeScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _startVoiceCheckIn() async {
+    if (_isAnalyzingVoice) return;
+
+    final initialized = await _speechService.initialize();
+    if (!initialized) {
+      setState(() {
+        _voiceError = 'Speech recognition is not available on this device.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isListening = true;
+      _voiceError = null;
+      _voiceTranscript = '';
+    });
+
+    await _speechService.startListening(
+      onResult: (transcript) {
+        if (!mounted) return;
+        setState(() {
+          _voiceTranscript = transcript;
+        });
+      },
+    );
+  }
+
+  Future<void> _stopVoiceCheckIn() async {
+    if (!_isListening) return;
+
+    setState(() => _isListening = false);
+    final transcript = await _speechService.stopListening();
+    if (!mounted) return;
+
+    final normalized = transcript.trim();
+    if (normalized.isEmpty) {
+      setState(() {
+        _voiceError = 'Could not capture speech. Try again with a longer check-in.';
+      });
+      return;
+    }
+
+    setState(() {
+      _voiceTranscript = normalized;
+      _isAnalyzingVoice = true;
+      _voiceError = null;
+    });
+
+    try {
+      final analysis = await EmotionService.analyzeEmotion(normalized);
+      if (!mounted) return;
+      setState(() {
+        _voiceAnalysis = analysis;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _voiceError = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isAnalyzingVoice = false);
+      }
+    }
+  }
+
+  void _openRecommendedGroup() {
+    final analysis = _voiceAnalysis;
+    if (analysis == null) return;
+
+    final communityProvider = context.read<CommunityProvider>();
+    final community = EmotionService.matchCommunityForRecommendation(
+      analysis.recommendedGroup,
+      communityProvider.allCommunities,
+    );
+    if (community == null) return;
+
+    communityProvider.joinCommunity(community.id);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatRoomScreen(
+          communityId: community.id,
+          communityName: community.name,
+          communityEmoji: community.emoji,
+          pendingVoiceMessage: _voiceTranscript,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceSentimentCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final analysis = _voiceAnalysis;
+    final recommendedCommunity = analysis == null
+        ? null
+        : EmotionService.matchCommunityForRecommendation(
+            analysis.recommendedGroup,
+            context.watch<CommunityProvider>().allCommunities,
+          );
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: colorScheme.surface,
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.14),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  _isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Voice Mood Check-In',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Press and hold to talk. We\'ll estimate sentiment and suggest a supportive space.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.outline,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onLongPressStart: (_) => _startVoiceCheckIn(),
+            onLongPressEnd: (_) => _stopVoiceCheckIn(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  colors: _isListening
+                      ? [
+                          colorScheme.primary,
+                          colorScheme.secondary,
+                        ]
+                      : [
+                          colorScheme.primaryContainer,
+                          colorScheme.secondaryContainer,
+                        ],
+                ),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    _isListening ? Icons.mic : Icons.touch_app_rounded,
+                    color: _isListening ? Colors.white : colorScheme.primary,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isListening ? 'Listening...' : 'Hold to speak',
+                    style: TextStyle(
+                      color: _isListening ? Colors.white : colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isAnalyzingVoice) ...[
+            const SizedBox(height: 14),
+            const LinearProgressIndicator(),
+          ],
+          if (_voiceTranscript.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Transcript',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _voiceTranscript,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (_voiceError != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _voiceError!,
+              style: TextStyle(
+                color: colorScheme.error,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (analysis != null) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildInsightChip(
+                  context,
+                  icon: Icons.favorite_outline,
+                  label: analysis.sentimentLabel,
+                ),
+                _buildInsightChip(
+                  context,
+                  icon: Icons.bolt_rounded,
+                  label: '${analysis.energy} energy',
+                ),
+                _buildInsightChip(
+                  context,
+                  icon: Icons.health_and_safety_outlined,
+                  label: 'Risk ${analysis.riskLevel.toUpperCase()}',
+                ),
+                _buildInsightChip(
+                  context,
+                  icon: Icons.memory_rounded,
+                  label: analysis.source == 'remote' ? 'AI analysis' : 'On-device fallback',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              analysis.summary,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            if (analysis.keywords.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Detected themes: ${analysis.keywords.join(', ')}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+              ),
+            ],
+            if (recommendedCommunity != null) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.6),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      recommendedCommunity.emoji,
+                      style: const TextStyle(fontSize: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            recommendedCommunity.name,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            recommendedCommunity.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _openRecommendedGroup,
+                  icon: const Icon(Icons.forum_outlined),
+                  label: const Text('Open Recommended Chat'),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightChip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

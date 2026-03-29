@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 .DS_Store
+__pycache__/
 .atom/
 .build/
 .buildlog/
@@ -47,3 +48,10 @@ app.*.map.json
 .kiro
 /kiro/
 pubspec.lock
+docs/
+lambda/
+backend/.venv/
+backend/.env
+backend/*.db
+backend/*.sqlite3
+modules/lambda/*.zip

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../models/session_model.dart';
 import '../models/message_model.dart';
@@ -10,6 +12,7 @@ class ChatProvider with ChangeNotifier {
 
   List<ChatSession> _sessions = [];
   final Map<String, List<Message>> _messagesBySession = {};
+  final Map<String, Timer> _pendingBotReplies = {};
   bool _isLoading = false;
   String? _error;
   ConnectionState _connectionState = ConnectionState.disconnected;
@@ -20,11 +23,14 @@ class ChatProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   ConnectionState get connectionState => _connectionState;
+  WebSocketService? get wsService => _wsService;
   int get totalUnreadCount =>
       _sessions.fold(0, (sum, s) => sum + s.unreadCount);
 
-  /// Initialize WebSocket
+  /// Initialize WebSocket with backend endpoint
   void initializeWebSocket(String wsUrl, String anonymousId) {
+    _wsService?.dispose();
+
     _wsService = WebSocketService(wsUrl: wsUrl, anonymousId: anonymousId);
 
     // Listen to connection state
@@ -58,14 +64,14 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Load messages for a session
-  Future<void> loadMessages(String sessionId) async {
+  /// Load messages for a community
+  Future<void> loadCommunityMessages(String communityId) async {
     try {
-      final messages = await _apiService.getSessionMessages(sessionId);
-      _messagesBySession[sessionId] = messages;
+      final messages = await _apiService.getCommunityMessages(communityId);
+      _messagesBySession[communityId] = messages;
 
-      // Join WebSocket room
-      _wsService?.joinSession(sessionId);
+      // Join WebSocket room for real-time updates
+      _wsService?.joinCommunity(communityId);
 
       notifyListeners();
     } catch (e) {
@@ -75,13 +81,30 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Send a message
-  void sendMessage({
-    required String sessionId,
+  /// Load messages for a session (legacy)
+  Future<void> loadMessages(String sessionId) async {
+    try {
+      final messages = await _apiService.getSessionMessages(sessionId);
+      _messagesBySession[sessionId] = messages;
+
+      // Join WebSocket room
+      _wsService?.joinCommunity(sessionId);
+
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      debugPrint('Error loading messages: $e');
+      notifyListeners();
+    }
+  }
+
+  /// Send a message to a community
+  void sendCommunityMessage({
+    required String communityId,
     required String content,
   }) {
     try {
-      _wsService?.sendMessage(sessionId: sessionId, content: content);
+      _wsService?.sendMessage(communityId: communityId, content: content);
     } catch (e) {
       _error = e.toString();
       debugPrint('Error sending message: $e');
@@ -89,17 +112,174 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Handle incoming WebSocket message
-  void _handleIncomingMessage(Message message) {
-    // Add to message list
-    if (_messagesBySession.containsKey(message.sessionId)) {
-      _messagesBySession[message.sessionId]!.add(message);
-    } else {
-      _messagesBySession[message.sessionId] = [message];
+  /// Join a community channel (WebSocket + local message bucket).
+  void joinCommunity(String communityId) {
+    _messagesBySession.putIfAbsent(communityId, () => []);
+    _wsService?.joinCommunity(communityId);
+    notifyListeners();
+  }
+
+  void clearUnread(String communityId) {
+    markSessionAsRead(communityId);
+  }
+
+  void sendTyping(String communityId) {
+    _wsService?.sendAction('typing', {'communityId': communityId});
+  }
+
+  List<String> get typingUsers => const [];
+
+  bool get isConnected =>
+      _wsService != null && _connectionState == ConnectionState.connected;
+
+  List<Message> messagesForCommunity(String communityId) =>
+      getMessages(communityId);
+
+  /// Send a user message in a community chat (optimistic local echo + WS).
+  void sendMessage({
+    required String communityId,
+    required String content,
+    required String senderId,
+    required String senderName,
+  }) {
+    final msg = Message(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      sessionId: communityId,
+      senderId: senderId,
+      senderName: senderName,
+      content: content,
+      timestamp: DateTime.now(),
+      type: MessageType.user,
+      status: MessageStatus.sent,
+    );
+    _messagesBySession.putIfAbsent(communityId, () => []);
+    _messagesBySession[communityId]!.add(msg);
+    notifyListeners();
+    sendCommunityMessage(communityId: communityId, content: content);
+    _scheduleBotReply(communityId: communityId, content: content);
+  }
+
+  void _scheduleBotReply({
+    required String communityId,
+    required String content,
+  }) {
+    _pendingBotReplies[communityId]?.cancel();
+    _pendingBotReplies[communityId] = Timer(
+      const Duration(milliseconds: 900),
+      () {
+        final reply = _generateBotReply(
+          communityId: communityId,
+          content: content,
+        );
+        final botMessage = Message(
+          id: 'assistant-${DateTime.now().microsecondsSinceEpoch}',
+          sessionId: communityId,
+          senderId: 'serenity-assistant',
+          senderName: 'Serenity Bot',
+          content: reply,
+          timestamp: DateTime.now(),
+          type: MessageType.assistant,
+          status: MessageStatus.delivered,
+        );
+
+        _messagesBySession.putIfAbsent(communityId, () => []);
+        _messagesBySession[communityId]!.add(botMessage);
+        notifyListeners();
+        _pendingBotReplies.remove(communityId);
+      },
+    );
+  }
+
+  String _generateBotReply({
+    required String communityId,
+    required String content,
+  }) {
+    final normalized = content.toLowerCase();
+
+    if (_containsAny(normalized, const [
+      'suicide',
+      'hurt myself',
+      'self harm',
+      'don\'t want to live',
+      'hopeless',
+    ])) {
+      return 'I\'m really glad you said that out loud. Please reach out to a trusted person nearby and use the Crisis Resources section if you might be in immediate danger.';
     }
 
-    // Update session last message
-    final sessionIndex = _sessions.indexWhere((s) => s.id == message.sessionId);
+    if (_containsAny(normalized, const [
+      'anxious',
+      'panic',
+      'overthinking',
+      'racing',
+    ])) {
+      return 'That sounds really overwhelming. Try one tiny grounding step right now: name 5 things you can see, then take one slow breath with your shoulders dropped.';
+    }
+
+    if (_containsAny(normalized, const [
+      'sad',
+      'alone',
+      'lonely',
+      'depressed',
+      'crying',
+    ])) {
+      return 'You don\'t have to carry that by yourself here. If it helps, tell us whether today feels heavy because of one event, or because everything has been building up.';
+    }
+
+    if (_containsAny(normalized, const [
+      'exam',
+      'study',
+      'deadline',
+      'college',
+      'school',
+    ])) {
+      return 'Academic pressure can eat up all your headspace. What feels most urgent right now: the workload, fear of failing, or trying to recover your energy?';
+    }
+
+    if (_containsAny(normalized, const [
+      'family',
+      'parent',
+      'relationship',
+      'friend',
+    ])) {
+      return 'Relationship stress can linger long after the moment passes. If you want, share what happened and what part hurt the most so we can help you untangle it.';
+    }
+
+    if (_containsAny(normalized, const [
+      'better',
+      'grateful',
+      'proud',
+      'good',
+      'hopeful',
+    ])) {
+      return 'That\'s worth holding onto. What helped even a little today? Naming it can make it easier to return to when things get hard again.';
+    }
+
+    if (communityId == 'c4') {
+      return 'A gentle reset might help here. Try one sentence: "Right now, I notice..." and finish it without judging yourself.';
+    }
+
+    return 'Thanks for sharing that. I\'m here with you, and this space is too. If you want, say a little more about what today has felt like.';
+  }
+
+  bool _containsAny(String text, List<String> patterns) {
+    for (final pattern in patterns) {
+      if (text.contains(pattern)) return true;
+    }
+    return false;
+  }
+
+  /// Handle incoming WebSocket message
+  void _handleIncomingMessage(Message message) {
+    // Add to message list by community/session
+    final key = message.sessionId;
+    if (_messagesBySession.containsKey(key)) {
+      _messagesBySession[key]!.add(message);
+    } else {
+      _messagesBySession[key] = [message];
+    }
+
+    // Update session last message if applicable
+    final sessionIndex = _sessions.indexWhere((s) => s.id == key);
     if (sessionIndex != -1) {
       _sessions[sessionIndex] = _sessions[sessionIndex].copyWith(
         lastMessage: message.content,
@@ -111,9 +291,9 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Get messages for a session
-  List<Message> getMessages(String sessionId) {
-    return _messagesBySession[sessionId] ?? [];
+  /// Get messages for a session/community
+  List<Message> getMessages(String id) {
+    return _messagesBySession[id] ?? [];
   }
 
   /// Mark session as read
@@ -152,6 +332,9 @@ class ChatProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    for (final timer in _pendingBotReplies.values) {
+      timer.cancel();
+    }
     _wsService?.dispose();
     super.dispose();
   }

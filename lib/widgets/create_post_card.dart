@@ -18,21 +18,28 @@ class CreatePostCard extends StatefulWidget {
 
 class _CreatePostCardState extends State<CreatePostCard> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
   bool _consentGiven = false;
   bool _showGuidelines = true;
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   int get _characterCount => _controller.text.length;
+
+  // Lowered minimum to 20 chars for a better UX — still requires consent
   bool get _isValid =>
-      _characterCount >= 50 && _characterCount <= 2000 && _consentGiven;
+      _characterCount >= 20 && _characterCount <= 2000 && _consentGiven;
 
   void _submitPost() {
     if (!_isValid || widget.isSubmitting) return;
+
+    // Unfocus the text field first so the keyboard dismisses
+    _focusNode.unfocus();
 
     final postProvider = context.read<PostProvider>();
     postProvider.submitPost(
@@ -48,12 +55,14 @@ class _CreatePostCardState extends State<CreatePostCard> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       children: [
         // Safety Guidelines
         if (_showGuidelines)
           Card(
-            color: Theme.of(context).colorScheme.primaryContainer,
+            color: colorScheme.primaryContainer,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -63,7 +72,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
                     children: [
                       Icon(
                         Icons.info_outline,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        color: colorScheme.onPrimaryContainer,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -71,9 +80,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
                           'Important Information',
                           style:
                               Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer,
+                                    color: colorScheme.onPrimaryContainer,
                                   ),
                         ),
                       ),
@@ -94,8 +101,7 @@ class _CreatePostCardState extends State<CreatePostCard> {
                     '• We match your feelings to find similar experiences\n'
                     '• If you\'re in crisis, we\'ll show emergency resources',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          color: colorScheme.onPrimaryContainer,
                         ),
                   ),
                 ],
@@ -122,45 +128,113 @@ class _CreatePostCardState extends State<CreatePostCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Text input
+                // Text input — uses a FocusNode for reliable keyboard handling
                 TextField(
                   controller: _controller,
-                  maxLines: 8,
+                  focusNode: _focusNode,
+                  maxLines: 6,
+                  minLines: 3,
                   maxLength: 2000,
                   enabled: !widget.isSubmitting,
+                  textInputAction: TextInputAction.newline,
                   decoration: InputDecoration(
                     hintText:
                         'I feel overwhelmed with studies and don\'t know how to handle the pressure...',
-                    border: const OutlineInputBorder(),
-                    counterText: '$_characterCount/2000 (min: 50)',
-                    counterStyle: TextStyle(
-                      color: _characterCount < 50
-                          ? Theme.of(context).colorScheme.error
-                          : Theme.of(context).colorScheme.onSurface,
+                    hintStyle: TextStyle(
+                      color: colorScheme.onSurface.withValues(alpha: 0.35),
+                      fontSize: 14,
                     ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: colorScheme.outline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: colorScheme.outline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                    counterText: '$_characterCount / 2000 (min 20)',
+                    counterStyle: TextStyle(
+                      color: _characterCount < 20
+                          ? colorScheme.error
+                          : colorScheme.onSurface.withValues(alpha: 0.5),
+                      fontSize: 12,
+                    ),
+                    contentPadding: const EdgeInsets.all(14),
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Consent checkbox
-                CheckboxListTile(
-                  value: _consentGiven,
-                  onChanged: widget.isSubmitting
+                GestureDetector(
+                  onTap: widget.isSubmitting
                       ? null
-                      : (value) {
+                      : () {
                           setState(() {
-                            _consentGiven = value ?? false;
+                            _consentGiven = !_consentGiven;
                           });
                         },
-                  title: const Text(
-                    'I understand my text will be used by AI to find support',
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Checkbox(
+                          value: _consentGiven,
+                          onChanged: widget.isSubmitting
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _consentGiven = value ?? false;
+                                  });
+                                },
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'I understand my text will be used by AI to find support',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Your data is anonymous and used only for matching',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.outline,
+                                    fontSize: 11,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  subtitle: const Text(
-                    'Your data is anonymous and will be used only for matching',
-                  ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
                 ),
                 const SizedBox(height: 16),
 
@@ -177,13 +251,34 @@ class _CreatePostCardState extends State<CreatePostCard> {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.send),
+                      : const Icon(Icons.send_rounded),
                   label: Text(
-                      widget.isSubmitting ? 'Submitting...' : 'Submit Post'),
+                      widget.isSubmitting ? 'Analyzing...' : 'Share & Find Support'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
+
+                // Helper text when button is disabled
+                if (!_isValid && !widget.isSubmitting)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _characterCount < 20
+                          ? 'Write at least 20 characters to share'
+                          : !_consentGiven
+                              ? 'Please check the consent box above'
+                              : '',
+                      style: TextStyle(
+                        color: colorScheme.error.withValues(alpha: 0.7),
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
               ],
             ),
           ),

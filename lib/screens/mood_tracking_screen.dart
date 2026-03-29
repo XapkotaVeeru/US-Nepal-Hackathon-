@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../models/mood_entry_model.dart';
+import '../providers/mood_provider.dart';
+import '../services/emotion_service.dart';
+import '../services/speech_service.dart';
 
 // ── Design tokens (mirrored from main.dart) ──────────────────────────────────
 class _C {
   static const sage = Color(0xFF52A77A);
-  static const sageLight = Color(0xFF7EC8A0);
   static const cream = Color(0xFFF7F5F0);
   static const creamDark = Color(0xFFEDE9E0);
   static const amber = Color(0xFFE8A838);
@@ -23,13 +28,6 @@ class _MoodOption {
   const _MoodOption(this.emoji, this.label, this.color);
 }
 
-class _MoodEntry {
-  final DateTime date;
-  final int moodLevel; // 1–5
-  final String note;
-  const _MoodEntry(this.date, this.moodLevel, this.note);
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 class MoodTrackingScreen extends StatefulWidget {
   const MoodTrackingScreen({super.key});
@@ -42,7 +40,12 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     with SingleTickerProviderStateMixin {
   int? _selectedMoodIndex;
   final TextEditingController _noteController = TextEditingController();
-  bool _todayCheckedIn = false;
+  final SpeechService _speechService = SpeechService();
+  bool _isVoiceListening = false;
+  bool _isAnalyzingVoice = false;
+  String _voiceTranscript = '';
+  String? _voiceError;
+  EmotionAnalysis? _voiceAnalysis;
   late final AnimationController _checkAnim;
 
   static const List<_MoodOption> _moods = [
@@ -53,26 +56,10 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     _MoodOption('😄', 'Great', Color(0xFF52A77A)),
   ];
 
-  final List<_MoodEntry> _moodHistory = [
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 1)), 4,
-        'Had a great chat with a peer today!'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 2)), 3,
-        'Feeling okay, just a bit stressed about exams.'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 3)), 2,
-        'Rough day. Talked to my support group though.'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 4)), 4,
-        'Exercise really helped my mood today.'),
-    _MoodEntry(
-        DateTime.now().subtract(const Duration(days: 5)), 3, ''),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 6)), 5,
-        'Best day in a while! Feeling supported.'),
-    _MoodEntry(DateTime.now().subtract(const Duration(days: 7)), 4,
-        'Good conversations in group chat.'),
-  ];
-
   @override
   void initState() {
     super.initState();
+    _speechService.initialize();
     _checkAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -81,20 +68,36 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
 
   @override
   void dispose() {
+    _speechService.dispose();
     _noteController.dispose();
     _checkAnim.dispose();
     super.dispose();
   }
 
-  void _submitMood() {
+  Future<void> _submitMood() async {
     if (_selectedMoodIndex == null) return;
-    setState(() {
-      _todayCheckedIn = true;
-      _moodHistory.insert(
-        0,
-        _MoodEntry(DateTime.now(), _selectedMoodIndex! + 1,
-            _noteController.text.trim()),
+
+    final success = await context.read<MoodProvider>().addEntry(
+          moodLevel: _selectedMoodIndex! + 1,
+          note: _noteController.text.trim(),
+        );
+    if (!mounted) return;
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You already checked in today.'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
+      return;
+    }
+
+    setState(() {
+      _selectedMoodIndex = null;
+      _voiceTranscript = '';
+      _voiceError = null;
+      _voiceAnalysis = null;
     });
     _checkAnim.forward(from: 0);
     _noteController.clear();
@@ -109,6 +112,78 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
         margin: const EdgeInsets.all(12),
       ),
     );
+  }
+
+  Future<void> _startVoiceCheckIn() async {
+    if (_isAnalyzingVoice) return;
+
+    final initialized = await _speechService.initialize();
+    if (!initialized) {
+      setState(() {
+        _voiceError = 'Speech recognition is not available on this device.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isVoiceListening = true;
+      _voiceError = null;
+      _voiceTranscript = '';
+    });
+
+    await _speechService.startListening(onResult: (_) {});
+  }
+
+  Future<void> _stopVoiceCheckIn() async {
+    if (!_isVoiceListening) return;
+
+    setState(() => _isVoiceListening = false);
+    final transcript = await _speechService.stopListening();
+    if (!mounted) return;
+
+    final normalized = transcript.trim();
+    if (normalized.isEmpty) {
+      setState(() {
+        _voiceError = 'Could not capture speech. Try again with a longer check-in.';
+      });
+      return;
+    }
+
+    setState(() {
+      _voiceTranscript = normalized;
+      _isAnalyzingVoice = true;
+      _voiceError = null;
+    });
+
+    try {
+      final analysis = await EmotionService.analyzeEmotion(normalized);
+      if (!mounted) return;
+      setState(() {
+        _voiceAnalysis = analysis;
+        _selectedMoodIndex = _moodIndexFromAnalysis(analysis);
+        _noteController.text = normalized;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _voiceError = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isAnalyzingVoice = false);
+      }
+    }
+  }
+
+  int _moodIndexFromAnalysis(EmotionAnalysis analysis) {
+    final score = analysis.sentimentScore;
+    final risk = analysis.riskLevel.toUpperCase();
+
+    if (risk == 'HIGH') return 0;
+    if (risk == 'MEDIUM' || score <= -0.45) return 1;
+    if (score < 0.2) return 2;
+    if (score < 0.6) return 3;
+    return 4;
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -131,44 +206,78 @@ class _MoodTrackingScreenState extends State<MoodTrackingScreen>
     return Scaffold(
       backgroundColor: isDark ? _C.darkSurface : _C.cream,
       appBar: _buildAppBar(isDark),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _CheckInCard(
-              isDark: isDark,
-              moods: _moods,
-              selectedIndex: _selectedMoodIndex,
-              noteController: _noteController,
-              checkedIn: _todayCheckedIn,
-              checkAnim: _checkAnim,
-              onMoodSelected: (i) =>
-                  setState(() => _selectedMoodIndex = i),
-              onSubmit: _submitMood,
-            ),
-            const SizedBox(height: 20),
-            _WeekCalendar(
-              isDark: isDark,
-              moodHistory: _moodHistory,
-              colorForLevel: _colorForLevel,
-              emojiForLevel: _emojiForLevel,
-            ),
-            const SizedBox(height: 20),
-            _SectionHeader(label: 'Recent Moods', isDark: isDark),
-            const SizedBox(height: 10),
-            ..._moodHistory.take(7).map(
-                  (e) => _HistoryTile(
-                    entry: e,
-                    isDark: isDark,
-                    color: _colorForLevel(e.moodLevel),
-                    emoji: _emojiForLevel(e.moodLevel),
-                    label: _labelForLevel(e.moodLevel),
-                    timeAgo: _timeAgo(e.date),
-                  ),
+      body: Consumer<MoodProvider>(
+        builder: (context, moodProvider, _) {
+          if (moodProvider.isLoading && !moodProvider.isInitialized) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final moodHistory = moodProvider.entries;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CheckInCard(
+                  isDark: isDark,
+                  moods: _moods,
+                  selectedIndex: _selectedMoodIndex,
+                  noteController: _noteController,
+                  checkedIn: !moodProvider.canCheckInToday,
+                  checkAnim: _checkAnim,
+                  isVoiceListening: _isVoiceListening,
+                  isAnalyzingVoice: _isAnalyzingVoice,
+                  voiceTranscript: _voiceTranscript,
+                  voiceError: _voiceError,
+                  voiceAnalysis: _voiceAnalysis,
+                  onMoodSelected: (i) =>
+                      setState(() => _selectedMoodIndex = i),
+                  onVoiceCheckInStart: _startVoiceCheckIn,
+                  onVoiceCheckInEnd: _stopVoiceCheckIn,
+                  onSubmit: _submitMood,
                 ),
-          ],
-        ),
+                const SizedBox(height: 20),
+                _WeekCalendar(
+                  isDark: isDark,
+                  moodHistory: moodHistory,
+                  colorForLevel: _colorForLevel,
+                  emojiForLevel: _emojiForLevel,
+                ),
+                const SizedBox(height: 20),
+                _SectionHeader(label: 'Recent Moods', isDark: isDark),
+                const SizedBox(height: 10),
+                if (moodHistory.isEmpty)
+                  _Card(
+                    isDark: isDark,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        'No mood check-ins yet. Log one to start tracking your pattern.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFF9AACAA)
+                              : _C.inkLight,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ...moodHistory.take(7).map(
+                        (entry) => _HistoryTile(
+                          entry: entry,
+                          isDark: isDark,
+                          color: _colorForLevel(entry.moodLevel),
+                          emoji: _emojiForLevel(entry.moodLevel),
+                          label: _labelForLevel(entry.moodLevel),
+                          timeAgo: _timeAgo(entry.createdAt),
+                        ),
+                      ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -234,7 +343,14 @@ class _CheckInCard extends StatelessWidget {
   final TextEditingController noteController;
   final bool checkedIn;
   final AnimationController checkAnim;
+  final bool isVoiceListening;
+  final bool isAnalyzingVoice;
+  final String voiceTranscript;
+  final String? voiceError;
+  final EmotionAnalysis? voiceAnalysis;
   final ValueChanged<int> onMoodSelected;
+  final Future<void> Function() onVoiceCheckInStart;
+  final Future<void> Function() onVoiceCheckInEnd;
   final VoidCallback onSubmit;
 
   const _CheckInCard({
@@ -244,7 +360,14 @@ class _CheckInCard extends StatelessWidget {
     required this.noteController,
     required this.checkedIn,
     required this.checkAnim,
+    required this.isVoiceListening,
+    required this.isAnalyzingVoice,
+    required this.voiceTranscript,
+    required this.voiceError,
+    required this.voiceAnalysis,
     required this.onMoodSelected,
+    required this.onVoiceCheckInStart,
+    required this.onVoiceCheckInEnd,
     required this.onSubmit,
   });
 
@@ -264,7 +387,7 @@ class _CheckInCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: _C.sage.withOpacity(0.12),
+                  color: _C.sage.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.favorite_outline_rounded,
@@ -284,8 +407,8 @@ class _CheckInCard extends StatelessWidget {
                           : _C.ink,
                     ),
                   ),
-                  Text(
-                    'Tap an emoji to log your mood',
+                  const Text(
+                    'Tap an emoji or use voice to log your mood',
                     style: TextStyle(
                         fontSize: 12, color: _C.inkMuted),
                   ),
@@ -295,6 +418,121 @@ class _CheckInCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
+
+          GestureDetector(
+            onLongPressStart: (_) => onVoiceCheckInStart(),
+            onLongPressEnd: (_) => onVoiceCheckInEnd(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: isVoiceListening
+                      ? const [_C.sage, _C.amber]
+                      : [
+                          _C.sage.withValues(alpha: 0.12),
+                          _C.amber.withValues(alpha: 0.12),
+                        ],
+                ),
+                border: Border.all(
+                  color: isVoiceListening ? _C.sage : _C.creamDark,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    isVoiceListening ? Icons.mic : Icons.keyboard_voice_outlined,
+                    color: isVoiceListening ? Colors.white : _C.sage,
+                    size: 24,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isVoiceListening
+                        ? 'Listening to your check-in...'
+                        : 'Hold to speak your mood',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isVoiceListening
+                          ? Colors.white
+                          : (isDark ? const Color(0xFFE8F0EE) : _C.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          if (isAnalyzingVoice) ...[
+            const SizedBox(height: 14),
+            const LinearProgressIndicator(),
+          ],
+
+          if (voiceTranscript.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? _C.darkBorder : _C.creamDark,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                voiceTranscript,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFFE8F0EE) : _C.ink,
+                ),
+              ),
+            ),
+          ],
+
+          if (voiceError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              voiceError!,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFFE05C5C),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+
+          if (voiceAnalysis != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MiniChip(
+                  label: voiceAnalysis!.sentimentLabel,
+                  icon: Icons.favorite_outline,
+                ),
+                _MiniChip(
+                  label: '${voiceAnalysis!.energy} energy',
+                  icon: Icons.bolt_rounded,
+                ),
+                _MiniChip(
+                  label: 'Risk ${voiceAnalysis!.riskLevel.toUpperCase()}',
+                  icon: Icons.health_and_safety_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              voiceAnalysis!.summary,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? const Color(0xFF9AACAA) : _C.inkLight,
+                height: 1.4,
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
 
           // Emoji selector
           Row(
@@ -312,7 +550,7 @@ class _CheckInCard extends StatelessWidget {
                       horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: sel
-                        ? mood.color.withOpacity(0.14)
+                        ? mood.color.withValues(alpha: 0.14)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
@@ -363,7 +601,7 @@ class _CheckInCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: moods[selectedIndex!]
                           .color
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
@@ -434,11 +672,44 @@ class _CheckInCard extends StatelessWidget {
                 backgroundColor: _C.sage,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor:
-                    _C.inkMuted.withOpacity(0.15),
+                    _C.inkMuted.withValues(alpha: 0.15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+
+  const _MiniChip({required this.label, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _C.creamDark,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: _C.sage),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _C.ink,
             ),
           ),
         ],
@@ -469,7 +740,7 @@ class _ChecedInBanner extends StatelessWidget {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: _C.sage.withOpacity(0.12),
+                  color: _C.sage.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.check_rounded,
@@ -500,7 +771,7 @@ class _ChecedInBanner extends StatelessWidget {
 // ── Week Calendar ─────────────────────────────────────────────────────────────
 class _WeekCalendar extends StatelessWidget {
   final bool isDark;
-  final List<_MoodEntry> moodHistory;
+  final List<MoodEntry> moodHistory;
   final Color Function(int) colorForLevel;
   final String Function(int) emojiForLevel;
 
@@ -536,7 +807,7 @@ class _WeekCalendar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _C.sage.withOpacity(0.1),
+                  color: _C.sage.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
@@ -559,9 +830,9 @@ class _WeekCalendar extends StatelessWidget {
               final isToday = day.day == now.day &&
                   day.month == now.month;
               final entries = moodHistory.where((e) =>
-                  e.date.day == day.day &&
-                  e.date.month == day.month &&
-                  e.date.year == day.year);
+                  e.createdAt.day == day.day &&
+                  e.createdAt.month == day.month &&
+                  e.createdAt.year == day.year);
               final hasMood = entries.isNotEmpty;
               final level =
                   hasMood ? entries.first.moodLevel : 0;
@@ -588,7 +859,7 @@ class _WeekCalendar extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: hasMood
                           ? colorForLevel(level)
-                              .withOpacity(0.15)
+                              .withValues(alpha: 0.15)
                           : (isDark
                               ? _C.darkBorder
                               : _C.creamDark),
@@ -629,7 +900,7 @@ class _WeekCalendar extends StatelessWidget {
 
 // ── History Tile ──────────────────────────────────────────────────────────────
 class _HistoryTile extends StatelessWidget {
-  final _MoodEntry entry;
+  final MoodEntry entry;
   final bool isDark;
   final Color color;
   final String emoji;
@@ -667,7 +938,7 @@ class _HistoryTile extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
@@ -773,7 +1044,7 @@ class _Card extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: _C.ink.withOpacity(0.04),
+                  color: _C.ink.withValues(alpha: 0.04),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
