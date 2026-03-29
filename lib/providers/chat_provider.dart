@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../models/session_model.dart';
 import '../models/message_model.dart';
@@ -10,6 +12,7 @@ class ChatProvider with ChangeNotifier {
 
   List<ChatSession> _sessions = [];
   final Map<String, List<Message>> _messagesBySession = {};
+  final Map<String, Timer> _pendingBotReplies = {};
   bool _isLoading = false;
   String? _error;
   ConnectionState _connectionState = ConnectionState.disconnected;
@@ -109,12 +112,160 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Send a message (legacy session-based)
+  /// Join a community channel (WebSocket + local message bucket).
+  void joinCommunity(String communityId) {
+    _messagesBySession.putIfAbsent(communityId, () => []);
+    _wsService?.joinCommunity(communityId);
+    notifyListeners();
+  }
+
+  void clearUnread(String communityId) {
+    markSessionAsRead(communityId);
+  }
+
+  void sendTyping(String communityId) {
+    _wsService?.sendAction('typing', {'communityId': communityId});
+  }
+
+  List<String> get typingUsers => const [];
+
+  bool get isConnected =>
+      _wsService != null && _connectionState == ConnectionState.connected;
+
+  List<Message> messagesForCommunity(String communityId) =>
+      getMessages(communityId);
+
+  /// Send a user message in a community chat (optimistic local echo + WS).
   void sendMessage({
-    required String sessionId,
+    required String communityId,
+    required String content,
+    required String senderId,
+    required String senderName,
+  }) {
+    final msg = Message(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      sessionId: communityId,
+      senderId: senderId,
+      senderName: senderName,
+      content: content,
+      timestamp: DateTime.now(),
+      type: MessageType.user,
+      status: MessageStatus.sent,
+    );
+    _messagesBySession.putIfAbsent(communityId, () => []);
+    _messagesBySession[communityId]!.add(msg);
+    notifyListeners();
+    sendCommunityMessage(communityId: communityId, content: content);
+    _scheduleBotReply(communityId: communityId, content: content);
+  }
+
+  void _scheduleBotReply({
+    required String communityId,
     required String content,
   }) {
-    sendCommunityMessage(communityId: sessionId, content: content);
+    _pendingBotReplies[communityId]?.cancel();
+    _pendingBotReplies[communityId] = Timer(
+      const Duration(milliseconds: 900),
+      () {
+        final reply = _generateBotReply(
+          communityId: communityId,
+          content: content,
+        );
+        final botMessage = Message(
+          id: 'assistant-${DateTime.now().microsecondsSinceEpoch}',
+          sessionId: communityId,
+          senderId: 'serenity-assistant',
+          senderName: 'Serenity Bot',
+          content: reply,
+          timestamp: DateTime.now(),
+          type: MessageType.assistant,
+          status: MessageStatus.delivered,
+        );
+
+        _messagesBySession.putIfAbsent(communityId, () => []);
+        _messagesBySession[communityId]!.add(botMessage);
+        notifyListeners();
+        _pendingBotReplies.remove(communityId);
+      },
+    );
+  }
+
+  String _generateBotReply({
+    required String communityId,
+    required String content,
+  }) {
+    final normalized = content.toLowerCase();
+
+    if (_containsAny(normalized, const [
+      'suicide',
+      'hurt myself',
+      'self harm',
+      'don\'t want to live',
+      'hopeless',
+    ])) {
+      return 'I\'m really glad you said that out loud. Please reach out to a trusted person nearby and use the Crisis Resources section if you might be in immediate danger.';
+    }
+
+    if (_containsAny(normalized, const [
+      'anxious',
+      'panic',
+      'overthinking',
+      'racing',
+    ])) {
+      return 'That sounds really overwhelming. Try one tiny grounding step right now: name 5 things you can see, then take one slow breath with your shoulders dropped.';
+    }
+
+    if (_containsAny(normalized, const [
+      'sad',
+      'alone',
+      'lonely',
+      'depressed',
+      'crying',
+    ])) {
+      return 'You don\'t have to carry that by yourself here. If it helps, tell us whether today feels heavy because of one event, or because everything has been building up.';
+    }
+
+    if (_containsAny(normalized, const [
+      'exam',
+      'study',
+      'deadline',
+      'college',
+      'school',
+    ])) {
+      return 'Academic pressure can eat up all your headspace. What feels most urgent right now: the workload, fear of failing, or trying to recover your energy?';
+    }
+
+    if (_containsAny(normalized, const [
+      'family',
+      'parent',
+      'relationship',
+      'friend',
+    ])) {
+      return 'Relationship stress can linger long after the moment passes. If you want, share what happened and what part hurt the most so we can help you untangle it.';
+    }
+
+    if (_containsAny(normalized, const [
+      'better',
+      'grateful',
+      'proud',
+      'good',
+      'hopeful',
+    ])) {
+      return 'That\'s worth holding onto. What helped even a little today? Naming it can make it easier to return to when things get hard again.';
+    }
+
+    if (communityId == 'c4') {
+      return 'A gentle reset might help here. Try one sentence: "Right now, I notice..." and finish it without judging yourself.';
+    }
+
+    return 'Thanks for sharing that. I\'m here with you, and this space is too. If you want, say a little more about what today has felt like.';
+  }
+
+  bool _containsAny(String text, List<String> patterns) {
+    for (final pattern in patterns) {
+      if (text.contains(pattern)) return true;
+    }
+    return false;
   }
 
   /// Handle incoming WebSocket message
@@ -181,6 +332,9 @@ class ChatProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    for (final timer in _pendingBotReplies.values) {
+      timer.cancel();
+    }
     _wsService?.dispose();
     super.dispose();
   }

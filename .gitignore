@@ -47,3 +47,10 @@ app.*.map.json
 .kiro
 /kiro/
 pubspec.lock
+docs/
+lambda/
+lib/models/
+lib/screens/
+lib/services/
+lib/widgets/
+modules/lambda/*.zip

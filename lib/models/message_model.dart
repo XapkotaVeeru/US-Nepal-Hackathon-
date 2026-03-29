@@ -1,3 +1,7 @@
+enum MessageType { user, system, matchNotification, assistant }
+
+enum MessageStatus { sending, sent, delivered, read, failed }
+
 class Message {
   final String id;
   final String sessionId;
@@ -6,6 +10,8 @@ class Message {
   final String content;
   final DateTime timestamp;
   final bool isRead;
+  final MessageType type;
+  final MessageStatus status;
 
   Message({
     required this.id,
@@ -15,17 +21,51 @@ class Message {
     required this.content,
     required this.timestamp,
     this.isRead = false,
+    this.type = MessageType.user,
+    this.status = MessageStatus.sent,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    MessageType parseType(String? t) {
+      switch (t) {
+        case 'system':
+          return MessageType.system;
+        case 'matchNotification':
+          return MessageType.matchNotification;
+        case 'assistant':
+          return MessageType.assistant;
+        default:
+          return MessageType.user;
+      }
+    }
+
+    MessageStatus parseStatus(String? s) {
+      switch (s) {
+        case 'sending':
+          return MessageStatus.sending;
+        case 'delivered':
+          return MessageStatus.delivered;
+        case 'read':
+          return MessageStatus.read;
+        case 'failed':
+          return MessageStatus.failed;
+        default:
+          return MessageStatus.sent;
+      }
+    }
+
     return Message(
-      id: json['id'] as String,
-      sessionId: json['sessionId'] as String,
-      senderId: json['senderId'] as String,
-      senderName: json['senderName'] as String,
-      content: json['content'] as String,
-      timestamp: DateTime.parse(json['timestamp'] as String),
+      id: json['id'] as String? ?? '',
+      sessionId: (json['sessionId'] ?? json['communityId']) as String? ?? '',
+      senderId: json['senderId'] as String? ?? '',
+      senderName: json['senderName'] as String? ?? 'Anonymous',
+      content: json['content'] as String? ?? '',
+      timestamp: json['timestamp'] != null
+          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+          : DateTime.now(),
       isRead: json['isRead'] as bool? ?? false,
+      type: parseType(json['type'] as String?),
+      status: parseStatus(json['status'] as String?),
     );
   }
 
@@ -38,6 +78,8 @@ class Message {
       'content': content,
       'timestamp': timestamp.toIso8601String(),
       'isRead': isRead,
+      'type': type.name,
+      'status': status.name,
     };
   }
 
@@ -49,6 +91,8 @@ class Message {
     String? content,
     DateTime? timestamp,
     bool? isRead,
+    MessageType? type,
+    MessageStatus? status,
   }) {
     return Message(
       id: id ?? this.id,
@@ -58,6 +102,8 @@ class Message {
       content: content ?? this.content,
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
+      type: type ?? this.type,
+      status: status ?? this.status,
     );
   }
 }
