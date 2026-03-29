@@ -45,7 +45,7 @@ def create_chat_request(session: Session, payload: ChatRequestCreate) -> ChatReq
         session,
         user_id=payload.to_user_id,
         type=NotificationType.match_request,
-        title=f"{from_user.display_name} wants to connect",
+        title=f"{from_user.display_name} wants to talk to you",
         message=_request_message(from_user.display_name, payload),
         action_data={
             "requestId": chat_request.id,
@@ -144,7 +144,7 @@ def _get_request_or_404(session: Session, request_id: str) -> ChatRequest:
 
 
 def _request_message(sender_name: str, payload: ChatRequestCreate) -> str:
-    parts = [f"{sender_name} wants to connect"]
+    parts = [f"{sender_name} wants to talk to you"]
     if payload.support_category:
         parts.append(f"about {payload.support_category.replace('_', ' ')}")
     if payload.context_summary:
