@@ -103,6 +103,12 @@ class CommunityProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
+      if (e is ApiException && e.statusCode == 403) {
+        debugPrint(
+          'Community discovery is unavailable on the current backend. Keeping local community data.',
+        );
+        return;
+      }
       debugPrint('Error fetching communities from API: $e');
       // Mock data is already loaded, so this is fine
     }

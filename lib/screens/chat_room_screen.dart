@@ -62,7 +62,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       final chatProvider = context.read<ChatProvider>();
       chatProvider.openCommunity(widget.communityId);
       chatProvider.clearUnread(widget.communityId);
-      _speechService.initialize();
 
       final pending = widget.pendingVoiceMessage;
       if (pending != null && pending.trim().isNotEmpty) {

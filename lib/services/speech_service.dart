@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -23,14 +24,21 @@ class SpeechService {
 
   Future<bool> initialize() async {
     if (_isInitialized) return true;
-    _isInitialized = await _speech.initialize(
-      onError: (_) {
-        if (_sessionActive && !_manualStopRequested) {
-          _restartAfterPause();
-        }
-      },
-      onStatus: _handleStatus,
-    );
+
+    try {
+      _isInitialized = await _speech.initialize(
+        onError: (_) {
+          if (_sessionActive && !_manualStopRequested) {
+            _restartAfterPause();
+          }
+        },
+        onStatus: _handleStatus,
+      );
+    } catch (e) {
+      debugPrint('Speech recognition unavailable on this platform: $e');
+      _isInitialized = false;
+    }
+
     return _isInitialized;
   }
 

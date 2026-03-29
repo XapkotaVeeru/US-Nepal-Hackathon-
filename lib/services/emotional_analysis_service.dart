@@ -657,7 +657,7 @@ class LocalEmotionalAnalysisService implements EmotionalAnalysisService {
       if (supportCategory == SupportCategory.burnoutSupport)
         'Aim for spaces that understand work fatigue instead of generic advice.',
       if (userCategory == UserCategory.under18)
-        'We will route you toward youth-safe spaces before direct peer matching.',
+        'We will route you toward youth-safe spaces before one-to-one chat suggestions.',
     ];
 
     if (riskLevel == 'HIGH') {

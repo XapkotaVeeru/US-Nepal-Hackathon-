@@ -88,11 +88,7 @@ class LocalSupportLlmChatService implements LlmChatService {
       communityName: request.communityName,
     );
 
-    return const LlmChatReply(
-      content: '',
-      source: '',
-      usedFallback: true,
-    ).copyWith(
+    return LlmChatReply(
       content: reply,
       source: 'local-support-llm',
       usedFallback: true,
@@ -198,19 +194,5 @@ class BedrockLlmChatAdapter implements LlmChatAdapter {
   Future<LlmChatReply> generateReply(LlmChatRequest request) {
     // TODO: Plug teammate Bedrock chat orchestration here.
     throw UnimplementedError('Bedrock chat adapter is not wired yet.');
-  }
-}
-
-extension on LlmChatReply {
-  LlmChatReply copyWith({
-    String? content,
-    String? source,
-    bool? usedFallback,
-  }) {
-    return LlmChatReply(
-      content: content ?? this.content,
-      source: source ?? this.source,
-      usedFallback: usedFallback ?? this.usedFallback,
-    );
   }
 }

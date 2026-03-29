@@ -233,7 +233,7 @@ class LocalSupportMatchingService implements SupportMatchingService {
         directRequestAllowed: item.directRequestAllowed,
         safetyNote: item.directRequestAllowed
             ? null
-            : 'Youth check-ins are routed to moderated spaces before direct peer requests.',
+            : 'Youth check-ins are routed to moderated spaces before one-to-one support chat requests.',
       );
     }).toList();
   }
@@ -381,7 +381,7 @@ class LocalSupportMatchingService implements SupportMatchingService {
         const SupportRecommendationItem(
           title: 'Youth-safe routing',
           description:
-              'Direct unknown-peer requests stay limited here, so moderated youth spaces come first.',
+              'One-to-one support requests stay limited here, so moderated youth spaces come first.',
           actionLabel: 'Open youth group',
         ),
       );

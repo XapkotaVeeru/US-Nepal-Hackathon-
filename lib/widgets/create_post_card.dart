@@ -33,7 +33,6 @@ class _CreatePostCardState extends State<CreatePostCard> {
   @override
   void initState() {
     super.initState();
-    _speechService.initialize();
   }
 
   @override

@@ -118,6 +118,15 @@ class MentalHealthSupportApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        Provider<EmotionalAnalysisService>.value(
+          value: emotionalAnalysisService,
+        ),
+        Provider<SupportMatchingService>.value(
+          value: supportMatchingService,
+        ),
+        Provider<LlmChatService>.value(
+          value: llmChatService,
+        ),
         ChangeNotifierProvider(
           create: (_) =>
               AppStateProvider(anonymousIdService, apiService)..initialize(),

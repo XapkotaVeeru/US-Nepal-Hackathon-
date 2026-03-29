@@ -166,6 +166,11 @@ class AppStateProvider with ChangeNotifier {
     try {
       await _syncCurrentUserWithBackend();
     } catch (e) {
+      if (_shouldUseLocalProfileFallback(e)) {
+        _currentUser = nextUser;
+        await _anonymousIdService.saveCurrentUser(nextUser);
+        return;
+      }
       _currentUser = previousUser;
       debugPrint('Error saving user profile: $e');
       rethrow;
@@ -179,16 +184,25 @@ class AppStateProvider with ChangeNotifier {
     final user = _currentUser;
     if (user == null) return;
 
-    final remoteUser = await _apiService.upsertUserProfile(
-      userId: user.anonymousId,
-      displayName: user.displayName,
-      notificationsEnabled: user.notificationsEnabled,
-      soundEnabled: user.soundEnabled,
-      chatRequestsEnabled: user.chatRequestsEnabled,
-      groupInvitesEnabled: user.groupInvitesEnabled,
-    );
-    _currentUser = _mergeRemoteUser(remoteUser, user);
-    await _anonymousIdService.saveCurrentUser(_currentUser!);
+    try {
+      final remoteUser = await _apiService.upsertUserProfile(
+        userId: user.anonymousId,
+        displayName: user.displayName,
+        notificationsEnabled: user.notificationsEnabled,
+        soundEnabled: user.soundEnabled,
+        chatRequestsEnabled: user.chatRequestsEnabled,
+        groupInvitesEnabled: user.groupInvitesEnabled,
+      );
+      _currentUser = _mergeRemoteUser(remoteUser, user);
+      await _anonymousIdService.saveCurrentUser(_currentUser!);
+    } catch (e) {
+      if (_shouldUseLocalProfileFallback(e)) {
+        await _anonymousIdService.saveCurrentUser(user);
+        _currentUser = user;
+        return;
+      }
+      rethrow;
+    }
   }
 
   AnonymousUser _mergeRemoteUser(
@@ -199,5 +213,15 @@ class AppStateProvider with ChangeNotifier {
       totalPosts: localUser.totalPosts,
       totalChats: localUser.totalChats,
     );
+  }
+
+  bool _shouldUseLocalProfileFallback(Object error) {
+    if (error is ApiException && error.statusCode == 403) {
+      debugPrint(
+        'Profile sync is unavailable on the current backend. Using local profile state.',
+      );
+      return true;
+    }
+    return false;
   }
 }

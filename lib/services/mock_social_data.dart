@@ -53,11 +53,11 @@ class MockSocialData {
       case nightResetId:
         return 'Night Reset Room';
       case directMayaId:
-        return 'Maya | Peer Support';
+        return 'Maya | Support Listener';
       case directNoorId:
         return 'Noor | Check-in Buddy';
       case directAaravId:
-        return 'Aarav | Peer Support';
+        return 'Aarav | Support Listener';
       default:
         return 'Support Chat';
     }
@@ -121,7 +121,7 @@ class MockSocialData {
       ChatSession(
         id: directMayaId,
         type: 'individual',
-        name: 'Maya | Peer Support',
+        name: 'Maya | Support Listener',
         participantIds: [currentUserId, 'peer-maya'],
         lastMessage: 'I am around if you want to vent for five minutes without pressure.',
         lastMessageTime: now.subtract(const Duration(hours: 5)),
@@ -141,7 +141,7 @@ class MockSocialData {
       ChatSession(
         id: directAaravId,
         type: 'individual',
-        name: 'Aarav | Peer Support',
+        name: 'Aarav | Support Listener',
         participantIds: [currentUserId, 'peer-aarav'],
         lastMessage: 'If today felt rough, start with the part that still feels loud in your head.',
         lastMessageTime: now.subtract(const Duration(hours: 8, minutes: 5)),
@@ -433,7 +433,7 @@ class MockSocialData {
           'sessionId': directAaravId,
           'fromUserId': 'peer-aarav',
           'fromUserName': 'Aarav',
-          'communityName': 'Aarav | Peer Support',
+          'communityName': 'Aarav | Support Listener',
           'communityEmoji': '💬',
           'targetUserId': currentUserId,
         },
