@@ -16,7 +16,7 @@ import 'screens/about_screen.dart';
 
 import 'services/anonymous_id_service.dart';
 import 'services/api_service.dart';
-import 'config/aws_config.dart';
+import 'config/backend_config.dart';
 
 import 'providers/app_state_provider.dart';
 import 'providers/post_provider.dart';
@@ -37,7 +37,7 @@ void main() async {
 
   final anonymousIdService = await AnonymousIdService.create();
 
-  const apiBaseUrl = AwsConfig.httpApiBaseUrl;
+  const apiBaseUrl = BackendConfig.httpBaseUrl;
   final apiService = ApiService(baseUrl: apiBaseUrl);
 
   runApp(MentalHealthSupportApp(
@@ -99,7 +99,7 @@ class MentalHealthSupportApp extends StatelessWidget {
               final userId = appState.anonymousId;
               if (userId != null) {
                 chatProvider.initializeWebSocket(
-                  AwsConfig.websocketUrl,
+                  BackendConfig.websocketUrl,
                   userId,
                 );
               }

@@ -41,7 +41,7 @@ class CommunityProvider with ChangeNotifier {
     _fetchFromApi();
   }
 
-  /// Fetch communities from AWS backend
+  /// Fetch communities from backend
   Future<void> _fetchFromApi() async {
     final api = _apiService;
     if (api == null) return;

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'backend_debug_store.dart';
 
-/// Structured debug logger for API / WebSocket / Lambda diagnostics.
+/// Structured debug logger for API / WebSocket / backend diagnostics.
 /// Prints colour-coded JSON-structured logs in debug mode.
 class DebugLogger {
   DebugLogger._();
@@ -36,11 +36,14 @@ class DebugLogger {
   }) {
     final level = statusCode >= 400 ? 'ERROR' : 'API_RES';
     dynamic parsedBody;
-    String lambdaFunction = headers?['x-lambda-function'] ?? '';
+    String handlerName =
+        headers?['x-backend-handler'] ?? headers?['x-lambda-function'] ?? '';
     try {
       parsedBody = jsonDecode(body);
       if (parsedBody is Map<String, dynamic>) {
-        lambdaFunction = (parsedBody['lambdaFunction'] as String?) ?? lambdaFunction;
+        handlerName = (parsedBody['handler'] as String?) ??
+            (parsedBody['lambdaFunction'] as String?) ??
+            handlerName;
       }
     } catch (_) {
       parsedBody = body.length > 200 ? '${body.substring(0, 200)}...' : body;
@@ -51,7 +54,7 @@ class DebugLogger {
         statusCode: statusCode,
         executionTimeMs: elapsed.inMilliseconds,
         rawResponse: const JsonEncoder.withIndent('  ').convert(parsedBody),
-        lambdaFunction: lambdaFunction,
+        backendHandler: handlerName,
         errorMessage: statusCode >= 400 ? 'HTTP $statusCode' : '',
       ),
     );
@@ -63,8 +66,8 @@ class DebugLogger {
     });
   }
 
-  // ── Lambda ──────────────────────────────────────
-  static void lambdaResult(String functionName, {
+  // ── Backend Handler ─────────────────────────────
+  static void backendHandlerResult(String handlerName, {
     String? riskLevel,
     String? matchId,
     int? statusCode,
@@ -72,13 +75,13 @@ class DebugLogger {
   }) {
     BackendDebugStore.instance.update(
       BackendDebugStore.instance.state.value.copyWith(
-        lambdaFunction: functionName,
+        backendHandler: handlerName,
         statusCode: statusCode,
         errorMessage: error ?? BackendDebugStore.instance.state.value.errorMessage,
       ),
     );
-    _log('LAMBDA', {
-      'function': functionName,
+    _log('HANDLER', {
+      'handler': handlerName,
       if (riskLevel != null) 'riskLevel': riskLevel,
       if (matchId != null) 'matchId': matchId,
       if (statusCode != null) 'statusCode': statusCode,
@@ -86,8 +89,8 @@ class DebugLogger {
     });
   }
 
-  // ── Bedrock AI ──────────────────────────────────
-  static void bedrockClassification({
+  // ── AI ─────────────────────────────────────────
+  static void aiClassification({
     required String postId,
     required String riskLevel,
     List<String>? topics,
@@ -95,7 +98,7 @@ class DebugLogger {
   }) {
     BackendDebugStore.instance.update(
       BackendDebugStore.instance.state.value.copyWith(
-        bedrockResult: jsonEncode({
+        aiResult: jsonEncode({
           'postId': postId,
           'riskLevel': riskLevel,
           'topics': topics ?? [],
@@ -103,7 +106,7 @@ class DebugLogger {
         }),
       ),
     );
-    _log('BEDROCK', {
+    _log('AI', {
       'postId': postId,
       'riskLevel': riskLevel,
       if (topics != null) 'topics': topics,
@@ -111,11 +114,11 @@ class DebugLogger {
     });
   }
 
-  // ── DynamoDB ────────────────────────────────────
-  static void dynamoWrite(String table, String id, {bool success = true, String? error}) {
+  // ── Storage ────────────────────────────────────
+  static void storageWrite(String table, String id, {bool success = true, String? error}) {
     BackendDebugStore.instance.update(
       BackendDebugStore.instance.state.value.copyWith(
-        dynamoWrite: jsonEncode({
+        storageWrite: jsonEncode({
           'table': table,
           'id': id,
           'success': success,
@@ -123,7 +126,7 @@ class DebugLogger {
         }),
       ),
     );
-    _log(success ? 'DDB_WRITE' : 'DDB_ERR', {
+    _log(success ? 'STORE_WRITE' : 'STORE_ERR', {
       'table': table,
       'id': id,
       'success': success,
@@ -131,17 +134,17 @@ class DebugLogger {
     });
   }
 
-  static void dynamoRead(String table, {int? count, String? error}) {
+  static void storageRead(String table, {int? count, String? error}) {
     BackendDebugStore.instance.update(
       BackendDebugStore.instance.state.value.copyWith(
-        dynamoRead: jsonEncode({
+        storageRead: jsonEncode({
           'table': table,
           'count': count,
           'error': error,
         }),
       ),
     );
-    _log(error == null ? 'DDB_READ' : 'DDB_ERR', {
+    _log(error == null ? 'STORE_READ' : 'STORE_ERR', {
       'table': table,
       if (count != null) 'count': count,
       if (error != null) 'error': error,

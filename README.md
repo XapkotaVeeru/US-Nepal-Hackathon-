@@ -4,9 +4,7 @@ Serenity is a Flutter-based mental-health support app built for the US-Nepal Hac
 
 The app combines a local-first mobile experience with backend options that support both rapid development and future cloud expansion. On the client side, users can track moods, write journal entries, view personal insights, and use voice-assisted check-ins. On the backend side, the repo now includes:
 
-- AWS/Terraform infrastructure for a simplified ECS-first stack (VPC, S3, DynamoDB, ECS)
 - a lightweight FastAPI backend under `backend/` for local development, persistence, and realtime chat experimentation
-- optional legacy Lambda handlers and Terraform modules kept for future use
 
 Important: this project is a peer-support tool, not a replacement for professional medical care, therapy, or emergency services.
 
@@ -18,12 +16,10 @@ Important: this project is a peer-support tool, not a replacement for profession
 - [Repository Structure](#repository-structure)
 - [App Architecture](#app-architecture)
 - [Local Persistence](#local-persistence)
-- [AWS Backend](#aws-backend)
 - [FastAPI Backend](#fastapi-backend)
 - [Getting Started](#getting-started)
 - [Run the App](#run-the-app)
 - [Run the FastAPI Backend](#run-the-fastapi-backend)
-- [Terraform and AWS Setup](#terraform-and-aws-setup)
 - [Development Workflow](#development-workflow)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap Ideas](#roadmap-ideas)
@@ -39,8 +35,6 @@ This repo contains:
 - Voice-assisted emotional check-ins using speech-to-text and a sentiment-analysis service layer.
 - WebSocket-enabled chat flows and community messaging.
 - A modular FastAPI backend with SQLite, SQLModel, REST APIs, and WebSocket chat.
-- AWS infrastructure as code using Terraform.
-- Optional legacy Lambda handlers for community discovery and messaging (not wired by default).
 
 The current implementation intentionally favors a local-first user experience for mood tracking and journaling so the app remains functional even before backend sync is introduced for those features.
 
@@ -70,11 +64,8 @@ The current implementation intentionally favors a local-first user experience fo
 
 ### Infrastructure and backend
 
-- ECS Fargate for realtime chat services.
-- DynamoDB tables for backend data.
-- S3 for media storage.
-- VPC networking and supporting IAM via Terraform.
-- Legacy Lambda/API Gateway modules remain available but are not wired by default.
+- Local-first FastAPI backend for persistence and realtime chat.
+- Modular service structure ready for a hosted deployment later.
 
 ## Tech Stack
 
@@ -95,15 +86,7 @@ The current implementation intentionally favors a local-first user experience fo
 - FastAPI
 - SQLModel
 - SQLite
-- DynamoDB
-- S3
-- ECS Fargate
-- Terraform
-- AWS Lambda (legacy/optional)
-- API Gateway (legacy/optional)
-- Cognito (legacy/optional)
-- EventBridge (legacy/optional)
-- CloudWatch (legacy/optional)
+- WebSocket
 
 ## Repository Structure
 
@@ -111,32 +94,13 @@ The current implementation intentionally favors a local-first user experience fo
 .
 ├── android/                   # Android host project
 ├── ios/                       # iOS host project
-├── lambda/                    # Legacy AWS Lambda handlers (optional)
-│   ├── classify_risk/
-│   ├── create_post/
-│   ├── discover_communities/
-│   ├── get_messages/
-│   ├── join_community/
-│   ├── match_users/
-│   ├── send_message/
-│   ├── ws_connect/
-│   ├── ws_default/
-│   └── ws_disconnect/
 ├── lib/
-│   ├── config/                # App config such as AWS endpoints
+│   ├── config/                # App config such as backend endpoints
 │   ├── models/                # App data models
 │   ├── providers/             # Provider-based state management
 │   ├── screens/               # UI screens
 │   ├── services/              # App services and local utilities
 │   └── widgets/               # Reusable widgets
-├── terraform/
-│   ├── main.tf                # Root Terraform entrypoint
-│   ├── outputs.tf
-│   ├── providers.tf
-│   ├── variables.tf
-│   └── modules/               # Infrastructure modules
-├── docs/
-│   └── aws-backend-audit-runbook.md
 ├── backend/                   # Local-first FastAPI backend
 │   ├── app/
 │   ├── .env.example
@@ -219,66 +183,9 @@ The Insights screen now computes real values from local persisted data where ava
 - mood distribution
 - latest mood/journal summaries
 
-## AWS Backend
-
-The repo also contains an AWS backend defined with Terraform, centered on a simplified ECS-first stack.
-
-### Config
-
-The mobile app reads AWS settings from:
-
-- `lib/config/aws_config.dart`
-
-This file currently stores values such as:
-
-- AWS region
-- media bucket name
-- ALB DNS name
-- (optional) HTTP API base URL, WebSocket URL, and Cognito ID for the legacy Lambda stack
-
-If infrastructure changes after `terraform apply`, these values should be updated accordingly.
-
-### Terraform modules
-
-The backend is composed from modular Terraform components:
-
-- `vpc`
-- `s3`
-- `dynamodb`
-- `iam_ecs`
-- `ecs`
-
-Legacy modules (kept for future use but not wired by default):
-
-- `iam`
-- `bedrock_iam`
-- `sns_fcm`
-- `cognito`
-- `lambda`
-- `api_gateway`
-- `eventbridge`
-- `cloudwatch`
-
-### Lambda handlers (legacy)
-
-Current Lambda directories include:
-
-- `classify_risk`
-- `create_post`
-- `discover_communities`
-- `get_messages`
-- `join_community`
-- `match_users`
-- `send_message`
-- `ws_connect`
-- `ws_default`
-- `ws_disconnect`
-
-These support risk analysis, community flows, posting, matching, messaging, and realtime chat events, but are not wired in the simplified Terraform stack.
-
 ## FastAPI Backend
 
-The repo also includes a hackathon-friendly FastAPI backend under [backend](/home/umesh/Documents/us_hackthon/US-Nepal-Hackathon-/backend). It is intentionally independent from any uncommitted Bedrock work so the team can develop and test core persistence and realtime flows immediately.
+The repo also includes a hackathon-friendly FastAPI backend under `backend/`. It is intentionally independent from any future AI integration work so the team can develop and test core persistence and realtime flows immediately.
 
 ### What it provides
 
@@ -297,7 +204,7 @@ The repo also includes a hackathon-friendly FastAPI backend under [backend](/hom
 - lets the Flutter app move beyond mock/local-only data in a controlled way
 - works locally with SQLite
 - keeps the code modular enough to switch to PostgreSQL later
-- keeps future Bedrock integration behind backend endpoints rather than inside the Flutter app
+- keeps future AI integration behind backend endpoints rather than inside the Flutter app
 
 ## Getting Started
 
@@ -373,26 +280,6 @@ Useful URLs once it starts:
 
 If you want the Flutter app to use this backend later, the easiest next step is to point selected `ApiService` calls at the FastAPI server and map the existing Flutter models to the backend response shapes.
 
-## Terraform and AWS Setup
-
-The infrastructure lives under `terraform/`.
-
-### Typical workflow
-
-```bash
-cd terraform
-terraform init
-terraform plan
-terraform apply
-```
-
-### Important notes
-
-- Review `terraform/terraform.tfvars` before applying changes.
-- Do not commit secrets or sensitive environment-specific values.
-- After provisioning changes, update `lib/config/aws_config.dart` if outputs have changed.
-- Check `docs/aws-backend-audit-runbook.md` for operational context around the backend.
-
 ## Development Workflow
 
 ### Recommended local loop
@@ -442,10 +329,9 @@ Check:
 
 Check:
 
-- `lib/config/aws_config.dart`
-- whether the Terraform stack is deployed
-- whether the ALB DNS name or backend base URL is current
-- whether the legacy API Gateway URLs are current (if using the Lambda stack)
+- `lib/config/backend_config.dart`
+- whether the backend server is running
+- whether the backend base URL or WebSocket URL is current
 
 ### New Dart files are not showing up in git
 

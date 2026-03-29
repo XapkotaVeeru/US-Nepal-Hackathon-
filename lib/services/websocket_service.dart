@@ -35,7 +35,7 @@ class WebSocketService {
   Stream<Map<String, dynamic>> get rawEvents => _rawEventController.stream;
   ConnectionState get currentState => _state;
 
-  /// Connect to the API Gateway WebSocket
+  /// Connect to the backend WebSocket
   Future<void> connect() async {
     if (_state == ConnectionState.connected ||
         _state == ConnectionState.connecting) {
@@ -71,7 +71,7 @@ class WebSocketService {
   }
 
   /// Send a chat message via WebSocket
-  /// Matches Terraform route: "sendMessage"
+  /// Matches backend route: "sendMessage"
   void sendMessage({
     required String communityId,
     required String content,
@@ -94,7 +94,7 @@ class WebSocketService {
   }
 
   /// Join a community channel via WebSocket
-  /// Matches Terraform route: "joinCommunity"
+  /// Matches backend route: "joinCommunity"
   void joinCommunity(String communityId) {
     if (_state != ConnectionState.connected) {
       debugPrint('WebSocket not connected, cannot join community');

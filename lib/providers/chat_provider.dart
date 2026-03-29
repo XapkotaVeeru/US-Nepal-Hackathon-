@@ -27,7 +27,7 @@ class ChatProvider with ChangeNotifier {
   int get totalUnreadCount =>
       _sessions.fold(0, (sum, s) => sum + s.unreadCount);
 
-  /// Initialize WebSocket with AWS endpoint
+  /// Initialize WebSocket with backend endpoint
   void initializeWebSocket(String wsUrl, String anonymousId) {
     _wsService?.dispose();
 
