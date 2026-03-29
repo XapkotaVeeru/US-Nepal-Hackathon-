@@ -8,7 +8,7 @@ The app combines a local-first mobile experience with backend options that suppo
 
 Important: this project is a peer-support tool, not a replacement for professional medical care, therapy, or emergency services.
 
-# TEAM: THE TRAVELLING SALESMAN
+# TEAM: NEURAL NETWORK (TEAM 57)
 
 ## 👥 Team Members
 
