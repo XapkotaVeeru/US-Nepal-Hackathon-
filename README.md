@@ -23,7 +23,7 @@ Important: this project is a peer-support tool, not a replacement for profession
 | Name | Email | GitHub |
 |------|-------|--------|
 | Birat Sapkota | birat.078bei018@acem.edu.np | https://github.com/XapkotaVeeru |
-| Ayush Khanal|  | https://github.com/ayushkhanal1 |
+| Ayush Khanal| ayukhanalsh100@gmail.com | https://github.com/ayushkhanal1 |
 | Umesh Rajbanshi | ums.rbc07@gmail.com | https://github.com/umess-ss |
 | Anish Ghimire | anish.078bei008@acem.edu.np | https://github.com/itsmeanish13 |
 | Govinda Bhandari | govinda.078bei021@acem.edu.np | https://github.com/gobinda789 |
