@@ -56,6 +56,27 @@ class _HomeScreenState extends State<HomeScreen> {
               // Auto-join banner
               _buildAutoJoinBanner(context),
 
+              // Error message
+              if (postProvider.error != null)
+                _buildErrorCard(context, postProvider),
+              if (postProvider.error != null) const SizedBox(height: 16),
+
+              // Create post or show results (MAIN FEATURE - moved to top)
+              if (postProvider.isSubmitting)
+                _buildLoadingCard(context)
+              else if (postProvider.matchResults != null &&
+                  postProvider.currentPost != null)
+                MatchResultsCard(
+                  post: postProvider.currentPost!,
+                  onCreateNewPost: () => postProvider.clearMatchResults(),
+                )
+              else
+                CreatePostCard(
+                  anonymousId: appState.anonymousId ?? '',
+                  isSubmitting: postProvider.isSubmitting,
+                ),
+              const SizedBox(height: 20),
+
               // Mood Today Widget
               _buildMoodWidget(context),
               const SizedBox(height: 16),
@@ -83,27 +104,8 @@ class _HomeScreenState extends State<HomeScreen> {
               // Last Post Summary
               if (postProvider.postHistory.isNotEmpty)
                 _buildLastPostSummary(context, postProvider),
-              if (postProvider.postHistory.isNotEmpty) const SizedBox(height: 16),
-
-              // Error message
-              if (postProvider.error != null)
-                _buildErrorCard(context, postProvider),
-              if (postProvider.error != null) const SizedBox(height: 16),
-
-              // Create post or show results
-              if (postProvider.isSubmitting)
-                _buildLoadingCard(context)
-              else if (postProvider.matchResults != null &&
-                  postProvider.currentPost != null)
-                MatchResultsCard(
-                  post: postProvider.currentPost!,
-                  onCreateNewPost: () => postProvider.clearMatchResults(),
-                )
-              else
-                CreatePostCard(
-                  anonymousId: appState.anonymousId ?? '',
-                  isSubmitting: postProvider.isSubmitting,
-                ),
+              if (postProvider.postHistory.isNotEmpty)
+                const SizedBox(height: 16),
 
               const SizedBox(height: 80),
             ],
@@ -150,7 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final normalized = transcript.trim();
     if (normalized.isEmpty) {
       setState(() {
-        _voiceError = 'Could not capture speech. Try again with a longer check-in.';
+        _voiceError =
+            'Could not capture speech. Try again with a longer check-in.';
       });
       return;
     }
@@ -243,7 +246,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
-                  _isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded,
+                  _isListening
+                      ? Icons.graphic_eq_rounded
+                      : Icons.mic_none_rounded,
                   color: colorScheme.primary,
                 ),
               ),
@@ -303,7 +308,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     _isListening ? 'Listening...' : 'Hold to speak',
                     style: TextStyle(
-                      color: _isListening ? Colors.white : colorScheme.onSurface,
+                      color:
+                          _isListening ? Colors.white : colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -364,7 +370,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildInsightChip(
                   context,
                   icon: Icons.memory_rounded,
-                  label: analysis.source == 'remote' ? 'AI analysis' : 'On-device fallback',
+                  label: analysis.source == 'remote'
+                      ? 'AI analysis'
+                      : 'On-device fallback',
                 ),
               ],
             ),
@@ -691,8 +699,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: actions.map((action) {
             return Expanded(
               child: Padding(
-                padding: EdgeInsets.only(
-                    right: action != actions.last ? 10 : 0),
+                padding:
+                    EdgeInsets.only(right: action != actions.last ? 10 : 0),
                 child: InkWell(
                   onTap: action['onTap'] as VoidCallback,
                   borderRadius: BorderRadius.circular(16),
@@ -712,8 +720,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color:
-                                (action['color'] as Color).withValues(alpha: 0.12),
+                            color: (action['color'] as Color)
+                                .withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(
@@ -790,7 +798,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Navigate to the Chats tab – for now show a snackbar
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Switch to the Chats tab to see all conversations 💬'),
+                    content: Text(
+                        'Switch to the Chats tab to see all conversations 💬'),
                     duration: Duration(seconds: 2),
                   ),
                 );
@@ -997,8 +1006,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildReplyItem(
-              context, '🔥', 'Anonymous Phoenix', 'I totally understand...', '2h'),
+          _buildReplyItem(context, '🔥', 'Anonymous Phoenix',
+              'I totally understand...', '2h'),
           _buildReplyItem(context, '🦉', 'Anonymous Owl',
               'Same here, you\'re not alone', '5h'),
         ],
@@ -1020,7 +1029,8 @@ class _HomeScreenState extends State<HomeScreen> {
               color: colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 18))),
+            child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 18))),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1075,8 +1085,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Spacer(),
               Text(
                 _formatTime(lastPost.createdAt),
-                style:
-                    TextStyle(fontSize: 11, color: colorScheme.outline),
+                style: TextStyle(fontSize: 11, color: colorScheme.outline),
               ),
             ],
           ),

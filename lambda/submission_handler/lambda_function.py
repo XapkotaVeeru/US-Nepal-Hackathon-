@@ -2,20 +2,19 @@ import json
 import os
 import boto3
 import uuid
+import numpy as np
 from datetime import datetime, timezone
 from decimal import Decimal
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-# Environment-driven configuration keeps the function portable across regions
-# and makes model changes possible without code edits.
+# Environment configuration
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 TABLE_NAME = os.getenv('PEER_SUPPORT_TABLE', 'PeerSupportData')
 RISK_MODEL_ID = os.getenv('BEDROCK_RISK_MODEL_ID', 'amazon.nova-lite-v1:0')
-EMBEDDING_MODEL_ID = os.getenv(
-    'BEDROCK_EMBEDDING_MODEL_ID',
-    'amazon.titan-embed-text-v2:0'
-)
+EMBEDDING_MODEL_ID = os.getenv('BEDROCK_EMBEDDING_MODEL_ID', 'amazon.titan-embed-text-v2:0')
+SIMILARITY_THRESHOLD = float(os.getenv('SIMILARITY_THRESHOLD', '0.75'))
+
 BEDROCK_CONFIG = Config(
     connect_timeout=10,
     read_timeout=3600,
@@ -25,12 +24,7 @@ BEDROCK_CONFIG = Config(
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 bedrock = boto3.client('bedrock', region_name=AWS_REGION, config=BEDROCK_CONFIG)
-bedrock_runtime = boto3.client(
-    'bedrock-runtime',
-    region_name=AWS_REGION,
-    config=BEDROCK_CONFIG
-)
-lambda_client = boto3.client('lambda', region_name=AWS_REGION)
+bedrock_runtime = boto3.client('bedrock-runtime', region_name=AWS_REGION, config=BEDROCK_CONFIG)
 
 # DynamoDB table
 table = dynamodb.Table(TABLE_NAME)
@@ -38,23 +32,20 @@ table = dynamodb.Table(TABLE_NAME)
 
 class BedrockInvocationError(Exception):
     """Raised when Bedrock cannot be invoked due to auth/access/service issues."""
-
     def __init__(self, message, *, error_code=None, availability=None):
         super().__init__(message)
         self.error_code = error_code
         self.availability = availability or {}
 
+
 def lambda_handler(event, context):
-    """
-    Main handler for submission processing
-    """
+    """Main handler for submission processing with synchronous matching"""
     try:
         # Log the incoming event for debugging
         print(f"Received event: {json.dumps(event)}")
         
         # Parse request body
         body = json.loads(event.get('body', '{}'))
-        
         print(f"Parsed body: {json.dumps(body)}")
         
         # Validate input
@@ -65,7 +56,7 @@ def lambda_handler(event, context):
         # Extract data
         anonymous_id = body.get('anonymousId')
         content = body.get('content')
-        region = body.get('region', 'US')  # Default to US
+        region = body.get('region', 'US')
         
         # Generate submission ID
         submission_id = str(uuid.uuid4())
@@ -106,7 +97,7 @@ def lambda_handler(event, context):
                 'message': 'We\'re concerned about your safety. Please reach out to these professional resources.'
             })
         else:
-            # Generate embedding and trigger matching
+            # Generate embedding
             embedding = generate_embedding_bedrock(content)
             
             if embedding:
@@ -122,30 +113,34 @@ def lambda_handler(event, context):
                     UpdateExpression='SET embedding = :emb, embeddingModel = :model',
                     ExpressionAttributeValues={
                         ':emb': embedding_decimals,
-                        ':model': 'amazon.titan-embed-text-v2:0'
+                        ':model': EMBEDDING_MODEL_ID
                     }
                 )
-            
-            # Invoke matching lambda asynchronously
-            try:
-                lambda_client.invoke(
-                    FunctionName='PeerSupportMatchingHandler',
-                    InvocationType='Event',  # Async
-                    Payload=json.dumps({
-                        'submissionId': submission_id,
-                        'anonymousId': anonymous_id,
-                        'timestamp': timestamp
-                    })
-                )
-            except Exception as e:
-                print(f"Error invoking matching lambda: {str(e)}")
-            
-            return create_response(200, {
-                'submissionId': submission_id,
-                'riskLevel': risk_level,
-                'status': 'searching_for_match',
-                'message': 'We\'re finding people with similar experiences...'
-            })
+                
+                # Find similar users synchronously
+                similar_users = find_similar_users(embedding, anonymous_id, submission_id)
+                
+                # Get support groups (mock for now)
+                support_groups = get_support_groups(risk_level, content)
+                
+                print(f"Found {len(similar_users)} similar users")
+                
+                return create_response(200, {
+                    'submissionId': submission_id,
+                    'riskLevel': risk_level,
+                    'similarUsers': similar_users,
+                    'supportGroups': support_groups,
+                    'message': f'Found {len(similar_users)} people with similar experiences'
+                })
+            else:
+                # No embedding generated
+                return create_response(200, {
+                    'submissionId': submission_id,
+                    'riskLevel': risk_level,
+                    'similarUsers': [],
+                    'supportGroups': [],
+                    'message': 'Post submitted successfully'
+                })
     
     except BedrockInvocationError as e:
         print(f"Bedrock unavailable during submission handling: {str(e)}")
@@ -182,9 +177,7 @@ def validate_input(body):
 
 
 def classify_risk_bedrock(content):
-    """
-    Classify risk level using Amazon Nova Lite via Bedrock
-    """
+    """Classify risk level using Amazon Nova Lite via Bedrock"""
     try:
         prompt = f"""Analyze this text and classify mental health risk level.
 
@@ -224,12 +217,10 @@ Your JSON response:"""
         
         # Try to extract JSON from response (sometimes wrapped in markdown)
         if '```json' in result_text:
-            # Extract JSON from markdown code block
             json_start = result_text.find('```json') + 7
             json_end = result_text.find('```', json_start)
             result_text = result_text[json_start:json_end].strip()
         elif '```' in result_text:
-            # Extract from generic code block
             json_start = result_text.find('```') + 3
             json_end = result_text.find('```', json_start)
             result_text = result_text[json_start:json_end].strip()
@@ -261,9 +252,7 @@ Your JSON response:"""
 
 
 def generate_embedding_bedrock(content):
-    """
-    Generate embedding using Titan Embeddings v2 via Bedrock
-    """
+    """Generate embedding using Titan Embeddings v2 via Bedrock"""
     try:
         request_body = {
             "inputText": content,
@@ -284,11 +273,140 @@ def generate_embedding_bedrock(content):
         return None
 
 
+def find_similar_users(user_embedding, user_anonymous_id, user_submission_id):
+    """
+    Find similar users using cosine similarity
+    Returns top 5 matches above threshold
+    """
+    try:
+        # Convert to numpy array
+        user_emb_array = np.array(user_embedding)
+        
+        # Query all active submissions from DynamoDB
+        response = table.query(
+            IndexName='StatusIndex',
+            KeyConditionExpression='#status = :status',
+            ExpressionAttributeNames={'#status': 'status'},
+            ExpressionAttributeValues={':status': 'active'}
+        )
+        
+        candidates = response.get('Items', [])
+        print(f"Found {len(candidates)} active submissions in match pool")
+        
+        matches = []
+        
+        for candidate in candidates:
+            # Skip if no embedding
+            if 'embedding' not in candidate:
+                continue
+            
+            # Skip self
+            if candidate.get('anonymousId') == user_anonymous_id:
+                continue
+            
+            # Skip same submission
+            if candidate.get('submissionId') == user_submission_id:
+                continue
+            
+            # Skip HIGH risk users
+            if candidate.get('riskLevel') == 'HIGH':
+                continue
+            
+            # Calculate cosine similarity
+            candidate_embedding = np.array([float(x) for x in candidate['embedding']])
+            similarity = cosine_similarity(user_emb_array, candidate_embedding)
+            
+            if similarity >= SIMILARITY_THRESHOLD:
+                # Get first 100 chars of content as preview
+                content_preview = candidate.get('content', '')[:100]
+                if len(candidate.get('content', '')) > 100:
+                    content_preview += '...'
+                
+                matches.append({
+                    'userId': candidate.get('anonymousId'),
+                    'similarity': round(float(similarity), 2),
+                    'recentPost': content_preview,
+                    'timestamp': candidate.get('timestamp')
+                })
+        
+        # Sort by similarity (highest first) and take top 5
+        matches.sort(key=lambda x: x['similarity'], reverse=True)
+        top_matches = matches[:5]
+        
+        print(f"Returning {len(top_matches)} matches above threshold {SIMILARITY_THRESHOLD}")
+        return top_matches
+    
+    except Exception as e:
+        print(f"Error finding similar users: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return []
+
+
+def cosine_similarity(vec1, vec2):
+    """Calculate cosine similarity between two vectors"""
+    dot_product = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+    
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    
+    return dot_product / (norm1 * norm2)
+
+
+def get_support_groups(risk_level, content):
+    """
+    Get suggested support groups based on risk level and content
+    For MVP, return mock data - can be enhanced later
+    """
+    groups = []
+    
+    # Analyze content for keywords
+    content_lower = content.lower()
+    
+    if 'work' in content_lower or 'job' in content_lower or 'career' in content_lower:
+        groups.append({
+            'groupId': 'group-work-stress',
+            'name': 'Work Stress Support',
+            'description': 'Connect with others managing workplace challenges',
+            'memberCount': 24,
+            'category': 'Work & Career'
+        })
+    
+    if 'anxiety' in content_lower or 'anxious' in content_lower or 'worried' in content_lower:
+        groups.append({
+            'groupId': 'group-anxiety',
+            'name': 'Anxiety Support Circle',
+            'description': 'Share coping strategies for anxiety',
+            'memberCount': 42,
+            'category': 'Mental Health'
+        })
+    
+    if 'stress' in content_lower or 'stressed' in content_lower or 'pressure' in content_lower:
+        groups.append({
+            'groupId': 'group-stress-management',
+            'name': 'Stress Management',
+            'description': 'Learn and share stress reduction techniques',
+            'memberCount': 31,
+            'category': 'Wellness'
+        })
+    
+    # Default general group if no specific matches
+    if not groups:
+        groups.append({
+            'groupId': 'group-general-support',
+            'name': 'General Support',
+            'description': 'A welcoming space for all experiences',
+            'memberCount': 67,
+            'category': 'General'
+        })
+    
+    return groups[:3]  # Return max 3 groups
+
+
 def invoke_bedrock_model(model_id, request_body):
-    """
-    Invoke a Bedrock model and surface enough context to distinguish code
-    issues from account, region, or authorization issues.
-    """
+    """Invoke a Bedrock model with error handling"""
     try:
         response = bedrock_runtime.invoke_model(
             modelId=model_id,
@@ -301,27 +419,19 @@ def invoke_bedrock_model(model_id, request_body):
         error = e.response.get('Error', {})
         request_id = e.response.get('ResponseMetadata', {}).get('RequestId')
         availability = get_model_availability(model_id)
-        availability_text = (
-            json.dumps(availability)
-            if availability is not None
-            else 'unavailable'
-        )
+        availability_text = json.dumps(availability) if availability is not None else 'unavailable'
 
         raise BedrockInvocationError(
-            f"Bedrock invoke failed for model '{model_id}' in region "
-            f"'{AWS_REGION}'. code={error.get('Code')} "
-            f"message={error.get('Message')} requestId={request_id} "
-            f"availability={availability_text}",
+            f"Bedrock invoke failed for model '{model_id}' in region '{AWS_REGION}'. "
+            f"code={error.get('Code')} message={error.get('Message')} "
+            f"requestId={request_id} availability={availability_text}",
             error_code=error.get('Code'),
             availability=availability
         ) from e
 
 
 def get_model_availability(model_id):
-    """
-    Best-effort model availability lookup. This is extremely useful when
-    Bedrock returns vague messages such as 'Operation not allowed'.
-    """
+    """Best-effort model availability lookup"""
     try:
         response = bedrock.get_foundation_model_availability(modelId=model_id)
         return {
@@ -333,23 +443,17 @@ def get_model_availability(model_id):
         }
     except ClientError as e:
         error = e.response.get('Error', {})
-        print(
-            f"Could not retrieve Bedrock model availability for '{model_id}': "
-            f"{error.get('Code')} - {error.get('Message')}"
-        )
+        print(f"Could not retrieve Bedrock model availability for '{model_id}': "
+              f"{error.get('Code')} - {error.get('Message')}")
         return None
 
 
 def get_crisis_resources(region='US'):
-    """
-    Retrieve crisis resources from DynamoDB for the given region
-    """
+    """Retrieve crisis resources from DynamoDB for the given region"""
     try:
         response = table.query(
             KeyConditionExpression='PK = :pk',
-            ExpressionAttributeValues={
-                ':pk': f'CRISIS_RESOURCE#{region}'
-            }
+            ExpressionAttributeValues={':pk': f'CRISIS_RESOURCE#{region}'}
         )
         
         resources = []
@@ -409,7 +513,6 @@ def get_default_crisis_resources(region='US'):
             }
         ]
     else:
-        # Default to US resources
         return [
             {
                 'name': '988 Suicide & Crisis Lifeline',
