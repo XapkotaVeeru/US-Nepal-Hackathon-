@@ -2,7 +2,10 @@
 
 Serenity is a Flutter-based mental-health support app built for the US-Nepal Hackathon. It is designed to give people a safer, more approachable way to reflect on their emotional state, journal privately, discover peer communities, and talk anonymously with others who may understand similar experiences.
 
-The app combines a local-first mobile experience with an AWS-backed realtime and AI-assisted backend. On the client side, users can track moods, write journal entries, view personal insights, and use voice-assisted check-ins. On the backend side, the project includes Terraform infrastructure and AWS Lambda handlers for posting, matching, communities, messaging, and WebSocket chat.
+The app combines a local-first mobile experience with backend options that support both rapid development and future cloud expansion. On the client side, users can track moods, write journal entries, view personal insights, and use voice-assisted check-ins. On the backend side, the repo now includes:
+
+- AWS/Terraform infrastructure and Lambda handlers already used by parts of the app
+- a lightweight FastAPI backend under `backend/` for local development, persistence, and realtime chat experimentation
 
 Important: this project is a peer-support tool, not a replacement for professional medical care, therapy, or emergency services.
 
@@ -15,8 +18,10 @@ Important: this project is a peer-support tool, not a replacement for profession
 - [App Architecture](#app-architecture)
 - [Local Persistence](#local-persistence)
 - [AWS Backend](#aws-backend)
+- [FastAPI Backend](#fastapi-backend)
 - [Getting Started](#getting-started)
 - [Run the App](#run-the-app)
+- [Run the FastAPI Backend](#run-the-fastapi-backend)
 - [Terraform and AWS Setup](#terraform-and-aws-setup)
 - [Development Workflow](#development-workflow)
 - [Troubleshooting](#troubleshooting)
@@ -32,6 +37,7 @@ This repo contains:
 - Insights built from real locally saved user data.
 - Voice-assisted emotional check-ins using speech-to-text and a sentiment-analysis service layer.
 - WebSocket-enabled chat flows and community messaging.
+- A modular FastAPI backend with SQLite, SQLModel, REST APIs, and WebSocket chat.
 - AWS infrastructure as code using Terraform.
 - Lambda functions that support community discovery, message flows, risk classification, and realtime chat.
 
@@ -85,6 +91,9 @@ The current implementation intentionally favors a local-first user experience fo
 
 ### Backend and Infrastructure
 
+- FastAPI
+- SQLModel
+- SQLite
 - AWS Lambda
 - API Gateway (HTTP + WebSocket)
 - DynamoDB
@@ -127,6 +136,11 @@ The current implementation intentionally favors a local-first user experience fo
 │   └── modules/               # Infrastructure modules
 ├── docs/
 │   └── aws-backend-audit-runbook.md
+├── backend/                   # Local-first FastAPI backend
+│   ├── app/
+│   ├── .env.example
+│   ├── README.md
+│   └── requirements.txt
 ├── pubspec.yaml
 └── README.md
 ```
@@ -259,6 +273,29 @@ Current Lambda directories include:
 
 These support risk analysis, community flows, posting, matching, messaging, and realtime chat events.
 
+## FastAPI Backend
+
+The repo also includes a hackathon-friendly FastAPI backend under [backend](/home/umesh/Documents/us_hackthon/US-Nepal-Hackathon-/backend). It is intentionally independent from any uncommitted Bedrock work so the team can develop and test core persistence and realtime flows immediately.
+
+### What it provides
+
+- `GET /health`
+- anonymous user create/get/reset
+- mood create/list/summary
+- journal create/list/delete
+- chat session create/list
+- message create/list
+- notification list/mark-read
+- `WS /ws/sessions/{session_id}` for realtime chat
+- placeholder `/ai/*` routes reserved for future AI integration
+
+### Why it exists
+
+- lets the Flutter app move beyond mock/local-only data in a controlled way
+- works locally with SQLite
+- keeps the code modular enough to switch to PostgreSQL later
+- keeps future Bedrock integration behind backend endpoints rather than inside the Flutter app
+
 ## Getting Started
 
 ### Prerequisites
@@ -311,6 +348,27 @@ or
 ```bash
 flutter analyze
 ```
+
+## Run the FastAPI Backend
+
+From the repo root:
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload
+```
+
+Useful URLs once it starts:
+
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/redoc`
+
+If you want the Flutter app to use this backend later, the easiest next step is to point selected `ApiService` calls at the FastAPI server and map the existing Flutter models to the backend response shapes.
 
 ## Terraform and AWS Setup
 
